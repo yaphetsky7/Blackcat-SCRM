@@ -525,16 +525,33 @@
     catch (error) { notify(error.message, true); } finally { $('hub-suggest').disabled = false; }
   });
   $('hub-reply').addEventListener('input', () => { delete $('hub-reply').dataset.aiJob; });
+  let hubTranslateBusy=false;
+  async function translateHubDraft(){
+    if(!selected||hubTranslateBusy||$('hub-send').disabled)return;
+    const chosen={...selected,ref:{...selected.ref}},box=$('hub-reply'),original=box.value,acc=findAcc(chosen.accountId),out=outgoingFor(acc,chosen.ref);
+    if(!original.trim()||!out.enabled)return;
+    const key=JSON.stringify(out);hubTranslateBusy=true;$('hub-send').disabled=true;$('hub-send-status').textContent=local('正在翻译…','Translating…');
+    try{const r=await window.api.translate({text:original,...out,accountId:acc.id});if(!r.ok)throw Error(r.error);if(selected?.accountId!==chosen.accountId||selected?.ref.key!==chosen.ref.key||box.value!==original||JSON.stringify(outgoingFor(acc,chosen.ref))!==key)return;
+      if(typeof r.text!=='string'||!r.text.trim())throw Error(local('译文为空，消息未发送','Translation was empty. Nothing was sent.'));
+      box.value=r.text;if(r.text!==original)delete box.dataset.aiJob;
+      $('hub-send-status').textContent=local('已翻译，按 Enter 发送','Translation ready · Press Enter to send');
+    }catch(e){$('hub-send-status').textContent=e.message;}finally{hubTranslateBusy=false;$('hub-send').disabled=!selected;}
+  }
   let sendOriginal = false;
-  $('hub-reply').addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); sendOriginal = event.altKey; $('hub-reply-form').requestSubmit(); } });
+  $('hub-reply').addEventListener('keydown',event=>{
+    if(event.isComposing||event.keyCode===229)return;
+    const acc=selected&&findAcc(selected.accountId);
+    if(acc&&outgoingFor(acc,selected.ref).enabled&&BlackCatTranslationShortcut.matches(event,translateOf(acc).shortcut)){event.preventDefault();event.stopPropagation();if(!event.repeat)translateHubDraft();return;}
+    if(event.key==='Enter'&&!event.shiftKey&&!event.ctrlKey&&!event.metaKey){event.preventDefault();if(!event.repeat){sendOriginal=event.altKey;$('hub-reply-form').requestSubmit();}}
+  });
   $('hub-reply-form').addEventListener('submit', async (event) => {
-    event.preventDefault(); if (!selected || $('hub-send').disabled) return;
+    event.preventDefault(); if (!selected || hubTranslateBusy || $('hub-send').disabled) return;
     const chosen = { ...selected, ref: { ...selected.ref } }; const original = $('hub-reply').value; const jobId = $('hub-reply').dataset.aiJob; const raw = sendOriginal; sendOriginal = false;
     if (!original.trim()) return;
     $('hub-send').disabled = true; $('hub-send-status').textContent = local('正在发送…', 'Sending…');
     try {
       let text = original; const acc = findAcc(chosen.accountId); const out = outgoingFor(acc, chosen.ref);
-      if (!raw && !jobId && out.enabled) { const result = await window.api.translate({ text, ...out, accountId: acc.id }); if (!result.ok) throw new Error(result.error); text = result.text; }
+      if (!raw && !jobId && out.enabled && !BlackCatTranslationShortcut.normalize(translateOf(acc).shortcut).enabled) { const result = await window.api.translate({ text, ...out, accountId: acc.id }); if (!result.ok) throw new Error(result.error); text = result.text; }
       if ($('hub-reply').value !== original) throw new Error('输入已变化，请重新发送');
       if (jobId) await api('aiAuthorizeSend', jobId);
       await exclusiveCommand(chosen.accountId, 'send', { ref: chosen.ref, text, automatic: false });

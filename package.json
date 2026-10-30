@@ -1,13 +1,14 @@
 {
   "name": "blackcat-crm",
   "productName": "黑猫SCRM",
-  "version": "1.14.5",
+  "version": "1.14.6",
   "description": "黑猫SCRM 多平台聊天与客户管理",
   "main": "main.js",
   "blackcatServer": "https://sky.tail75b558.ts.net",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win nsis"
+    "dist": "electron-builder --win nsis",
+    "test:translation-shortcut": "node scripts/test-translation-shortcut.cjs"
   },
   "build": {
     "appId": "local.blackcat-crm",
@@ -52,7 +53,8 @@
       "user-guide.js",
       "guide-figures.js",
       "license.js",
-      "app-update.js"
+      "app-update.js",
+      "translation-shortcut.js"
     ],
     "win": {
       "target": [

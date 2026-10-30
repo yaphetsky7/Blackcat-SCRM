@@ -14,7 +14,7 @@
 
 - **Many accounts, one window**: per-account sessions, proxy and environment settings, unread counts and desktop notifications.
 - **AI auto-replies** (Claude): replies from your own knowledge base, with hand-off to a human when needed.
-- **Translation**: incoming and outgoing messages, per account or per customer.
+- **Translation**: incoming and outgoing messages, per account or per customer. Optionally enable a configurable translation shortcut (Ctrl+T by default) to translate the draft first, then press Enter to send. With the shortcut off, Enter retains the existing translate-and-send behavior.
 - **黑猫助手 (assistant)**: answers questions about the app, changes settings, reads a chat (including photos and group senders) and suggests replies you can fill into the typing box.
 - **Bulk messaging**: recipient lists from recent chats or Excel, message templates and task tracking.
 - **Contacts, quick replies and conversation notes.**

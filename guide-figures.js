@@ -78,8 +78,8 @@ module.exports = { version: '1.14.6', chapters: [
       ['Lingva 服务器：可填写自建服务器，一行一个。', 'Lingva servers: add your own servers, one per line.'],
     ] },
   ],
-  tipZh: '“粉丝独立翻译”打开后，可以给每个客户单独设置语言。第一次使用请先在自己的测试对话中核对译文。',
-  tipEn: 'With "Per-contact translation" on, each customer can have their own languages. Check translations in a test chat with yourself first.' },
+  tipZh: '新增“使用翻译快捷键”（默认关闭）：勾选后，Ctrl+T只把译文放进输入框，再按Enter发送；点击快捷键输入框可改组合键，按账号保存。关闭时保留Enter翻译并发送。“粉丝独立翻译”可给每个客户单独设语言。第一次使用请先在测试对话中核对译文。',
+  tipEn: 'New: "Use translation shortcut" (off by default). Ctrl+T fills the translation without sending; Enter sends it afterwards. Click the shortcut field to choose another combination, saved per account. With it off, Enter translates and sends. Per-contact translation allows different customer languages. Check translations in a test chat first.' },
 
 { id: 'quick', zh: '快捷回复', en: 'Quick replies',
   keywords: /快捷|模板|常用回复|quick|canned|template reply/i,

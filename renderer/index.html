@@ -333,10 +333,20 @@
       </div>
 
       <div class="tr-switch strong">
+        <label for="tr-shortcut-enabled">使用翻译快捷键</label>
+        <label class="switch"><input type="checkbox" id="tr-shortcut-enabled"><span></span></label>
+      </div>
+      <div class="tr-shortcut-controls" id="tr-shortcut-controls" hidden>
+        <label for="tr-shortcut-key">翻译快捷键</label>
+        <div class="tr-shortcut-editor"><input id="tr-shortcut-key" type="text" readonly autocomplete="off" spellcheck="false" aria-describedby="tr-shortcut-note" data-i18n-skip><button type="button" id="tr-shortcut-reset" class="ghost-btn small">恢复 Ctrl+T</button></div>
+        <p id="tr-shortcut-note" class="tr-tip">点击输入框，按下新的组合键。使用 Ctrl、Alt 或 Meta 搭配字母、数字或 F1–F12。</p>
+        <p id="tr-shortcut-status" class="tr-tip" role="status" data-i18n-skip></p>
+      </div>
+      <div class="tr-switch strong">
         <span>实时翻译 <i class="tip" title="输入时在输入框上方预览译文">ⓘ</i></span>
         <label class="switch"><input type="checkbox" id="tr-realtime"><span></span></label>
       </div>
-      <p class="tr-tip">开启发送翻译后：Enter 发送译文，Alt+Enter 发送原文</p>
+      <p class="tr-tip" id="tr-send-tip" data-i18n-skip></p>
 
       <details class="tr-advanced">
         <summary>测试翻译 / Lingva 服务器</summary>
@@ -586,6 +596,7 @@
   </dialog>
 
   <script src="i18n.js"></script>
+  <script src="../translation-shortcut.js"></script>
   <script src="app.js"></script>
   <script src="../message-alerts.js"></script>
   <script src="message-alerts.js"></script>

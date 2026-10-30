@@ -1,5 +1,6 @@
 (() => {
   const translations = {
+    '使用翻译快捷键':'Use translation shortcut', '翻译快捷键':'Translation shortcut', '恢复 Ctrl+T':'Reset to Ctrl+T', '点击输入框，按下新的组合键。使用 Ctrl、Alt 或 Meta 搭配字母、数字或 F1–F12。':'Click the field and press a new combination: Ctrl, Alt or Meta with a letter, number or F1–F12.',
     '等你停止操作约 2 分钟，或切到其他账号/程序后，再备份': 'Waiting until you are idle ~2 min or switch to another account/program before backing up',
     '已跳过未变化的对话': 'unchanged chats skipped',
     'AI 使用方式': 'How AI is paid for', '黑猫 AI 点数': 'BlackCat AI points', '按用量扣账户点数，不需要自己的 Key': 'Charged to your account points; no key needed',

@@ -1885,3 +1885,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
 .assistant-suggest-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
 .assistant-suggest-status { font-size:12px; color:var(--muted); }
 .account-sound-setting select { padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); }
+
+.tr-shortcut-controls{margin:8px 0 16px;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--surface)}
+.tr-shortcut-controls>label{display:block;margin-bottom:7px;font-size:12px;color:var(--muted)}
+.tr-shortcut-editor{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.tr-shortcut-editor input{flex:1;min-width:100px;width:100%;font:600 13px/1.5 var(--font-ui,"Segoe UI",sans-serif);cursor:pointer}.tr-shortcut-editor button{flex:none}.tr-shortcut-controls .tr-tip{margin:8px 0 0;overflow-wrap:anywhere}

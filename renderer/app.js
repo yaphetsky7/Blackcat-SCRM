@@ -769,6 +769,7 @@ const DEFAULT_TRANSLATE = {
   incoming: { enabled: true, target: 'zh-CN', route: 'auto', source: 'auto' },
   outgoing: { enabled: false, target: 'en', route: 'auto', source: 'auto' },
   realtime: false,
+  shortcut: { enabled: false, accelerator: 'Ctrl+T' },
   contacts: {}, // 联系人 key -> { title, incoming, outgoing }
 };
 
@@ -802,6 +803,7 @@ for (const dir of ['in', 'out']) {
 function translateOf(acc) {
   acc.translate ??= structuredClone(DEFAULT_TRANSLATE);
   acc.translate.contacts ??= {};
+  acc.translate.shortcut = BlackCatTranslationShortcut.normalize(acc.translate.shortcut);
   return acc.translate;
 }
 
@@ -833,6 +835,12 @@ function renderTranslatePanel() {
     + (c?.title ? `\n联系人：${c.title}` : '');
   tr.perContact.checked = t.perContact;
   tr.realtime.checked = t.realtime;
+  const shortcut=BlackCatTranslationShortcut.normalize(t.shortcut),en=window.I18N?.locale==='en';
+  $('tr-shortcut-enabled').checked=shortcut.enabled;
+  $('tr-shortcut-controls').hidden=!shortcut.enabled;
+  $('tr-shortcut-key').value=shortcut.accelerator;
+  $('tr-shortcut-status').textContent=shortcut.enabled&&!view.outgoing.enabled?(en?'Turn on outgoing translation to use this shortcut.':'请先开启发送翻译，再使用快捷键。'):'';
+  $('tr-send-tip').textContent=shortcut.enabled?(en?'With outgoing translation on: '+shortcut.accelerator+' translates only; Enter sends the current text.':'开启发送翻译后：'+shortcut.accelerator+' 只翻译，Enter 发送输入框当前内容。'):(en?'With outgoing translation on: Enter translates and sends; Alt+Enter sends the original.':'开启发送翻译后：Enter 翻译并发送，Alt+Enter 发送原文。');
 
   tr.scope.innerHTML = '';
   if (t.perContact) {
@@ -903,6 +911,16 @@ tr.realtime.addEventListener('change', () => {
   saveTranslate(acc);
 });
 
+
+$('tr-shortcut-enabled').addEventListener('change',()=>{const acc=findAcc(activeId());if(!acc)return;translateOf(acc).shortcut.enabled=$('tr-shortcut-enabled').checked;saveTranslate(acc);});
+$('tr-shortcut-key').addEventListener('keydown',event=>{
+  if(event.key==='Tab')return;
+  event.preventDefault();event.stopPropagation();if(event.repeat)return;
+  const accelerator=BlackCatTranslationShortcut.fromEvent(event);if(!accelerator)return;
+  const acc=findAcc(activeId());if(!acc)return;
+  translateOf(acc).shortcut.accelerator=accelerator;saveTranslate(acc);
+});
+$('tr-shortcut-reset').addEventListener('click',()=>{const acc=findAcc(activeId());if(!acc)return;translateOf(acc).shortcut.accelerator=BlackCatTranslationShortcut.DEFAULT;saveTranslate(acc);});
 
 $('tr-lingva').addEventListener('change', (e) => {
   const servers = e.target.value.split(/\s+/).filter(Boolean);

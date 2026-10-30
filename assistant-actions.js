@@ -1,7 +1,7 @@
 const DEFINITIONS={
  account_sound_set:['账号消息铃声','accountId、data={enabled:boolean}，保存此账号的消息铃声开关，立即生效；全局铃声总开关仍适用。','write'],
  inspect:['读取资料','读取功能当前数据。必须用顶层 target 字段（不要放在 value 或 data 里），target=translation/quick/contacts/bulk/ai/environment；data可含query、offset、view(account/mine)。只返回分页数据。','read'],
- translation_set:['翻译设置','保存账号或客户翻译。data={scope:account/contact,incoming:{enabled,target,source,route},outgoing:{enabled,target,source,route},realtime,perContact}；客户需要chatKey。','write'],
+ translation_set:['翻译设置','保存账号或客户翻译。data={scope:account/contact,incoming:{enabled,target,source,route},outgoing:{enabled,target,source,route},realtime,perContact,shortcut:{enabled,accelerator:"Ctrl+T"}}；快捷键是账号设置，开启后组合键只翻译、Enter发送当前文字。客户需要chatKey。','write'],
  translation_test:['测试翻译','data={text,target,source,route}，使用真实翻译服务并返回结果。','write'],
  quick_group_upsert:['快捷分组','新建或重命名快捷分组。data={scope:personal/public,id?,name}。','write'],
  quick_upsert:['快捷回复','新建、修改或移动快捷回复并保存。data={scope:personal/public,id?,groupId?,groupName?,text,files?:[文件ID]}。','write'],

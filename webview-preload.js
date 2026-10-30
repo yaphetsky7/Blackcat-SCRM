@@ -4,6 +4,31 @@
 //   3) 实时翻译：输入时在输入框上方预览译文
 // 脚本运行在隔离环境，只操作 DOM；模拟回车要让页面自己的代码收到，所以用 webFrame 在页面环境里执行。
 const { ipcRenderer, webFrame } = require('electron');
+// BEGIN translation-shortcut inline (sandboxed preloads cannot require local files).
+const translationShortcut=(()=>{const module={exports:{}};
+(function(root,factory){if(typeof module==='object'&&module.exports)module.exports=factory();else root.BlackCatTranslationShortcut=factory();})(typeof globalThis==='undefined'?this:globalThis,()=>{
+  const DEFAULT='Ctrl+T';
+  const modifiers=['Ctrl','Alt','Shift','Meta'];
+  function parse(value){
+    if(typeof value!=='string')return null;
+    const parts=value.split('+').map(s=>s.trim().toLowerCase()),mods=new Set();let key='';
+    for(const part of parts){const mod={ctrl:'Ctrl',control:'Ctrl',alt:'Alt',option:'Alt',shift:'Shift',meta:'Meta',cmd:'Meta',command:'Meta'}[part];if(mod){if(mods.has(mod))return null;mods.add(mod);}else if(!key&&/^(?:[a-z0-9]|f(?:[1-9]|1[0-2]))$/.test(part))key=part.toUpperCase();else return null;}
+    if(!key||!['Ctrl','Alt','Meta'].some(m=>mods.has(m)))return null;
+    return [...modifiers.filter(m=>mods.has(m)),key].join('+');
+  }
+  function fromEvent(e){
+    if(e.isComposing||e.keyCode===229||e.getModifierState?.('AltGraph'))return null;
+    const code=/^(?:Key([A-Z])|Digit([0-9])|(F(?:[1-9]|1[0-2])))$/.exec(e.code||'');
+    const key=code?(code[1]||code[2]||code[3]):String(e.key||'').toUpperCase();
+    return parse([e.ctrlKey&&'Ctrl',e.altKey&&'Alt',e.shiftKey&&'Shift',e.metaKey&&'Meta',key].filter(Boolean).join('+'));
+  }
+  const normalize=value=>({enabled:value?.enabled===true,accelerator:parse(value?.accelerator)||DEFAULT});
+  const matches=(e,value)=>{const config=normalize(value);return config.enabled&&fromEvent(e)===config.accelerator;};
+  return{DEFAULT,parse,fromEvent,normalize,matches};
+});
+
+return module.exports;})();
+// END translation-shortcut inline
 const recipientAddress=(()=>{const module={exports:{}};
 (function(root,factory){if(typeof module==='object'&&module.exports)module.exports=factory();else root.BlackCatRecipients=factory();})(typeof globalThis!=='undefined'?globalThis:this,function(){
   function whatsapp(raw, suppliedKey){
@@ -528,9 +553,10 @@ function hideFloat() {
 
 let preview = { src: '', result: null };
 let busy = false;
+let translatedDraft = null;
 let composerHint = null;
 const englishUi = () => cfg?.locale === 'en';
-const sendingHint = (target) => englishUi() ? `Translate message to 【${label(target)}】 and send` : `消息翻译成【${label(target)}】发送`;
+const sendingHint = (target) => {const shortcut=translationShortcut.normalize(settings()?.shortcut);return shortcut.enabled?(englishUi()?`${shortcut.accelerator}: translate to 【${label(target)}】 · Enter: send`:`${shortcut.accelerator} 翻译成【${label(target)}】 · Enter 发送`):(englishUi()?`Translate message to 【${label(target)}】 and send`:`消息翻译成【${label(target)}】发送`);};
 const previewKey = (s) => `${chat.key}|${s?.outgoing?.source}|${s?.outgoing?.target}|${s?.outgoing?.route}`;
 
 let hintedBox = null;
@@ -656,62 +682,56 @@ async function send(box, ad) {
   await webFrame.executeJavaScript(SEND_ENTER);
 }
 
-// 翻译输入框内容后发送；original=true 直接发原文
-async function translateAndSend(box, ad, s, original) {
+// Manual shortcut mode fills the editor for review; it never sends a message.
+async function translateAndSend(box, ad, s, original, translateOnly = false) {
   if (busy) return;
-  if (original) {
-    hideFloat();
-    await send(box, ad);
-    return;
-  }
-  const src = readBox(box);
   busy = true;
-  showFloat(box, `正在翻译成${label(s.outgoing.target)}…`, '');
-  const key = previewKey(s);
-  const r = preview.src === src && preview.key === key && preview.result?.ok ? preview.result : await request({ text: src, ...s.outgoing });
-  busy = false;
-  if (!box.isConnected || readBox(box) !== src || previewKey(settings()) !== key) { hideFloat(); return; }
-  if (!r.ok) {
-    showFloat(box, '翻译失败，消息未发送（Alt+Enter 可直接发送原文）', failureReasons(r.error), true);
-    setTimeout(hideFloat, 8000);
-    return;
-  }
-  hideFloat();
-  preview = { src: '', result: null };
-  if (!r.same && !(await setBox(box, r.text))) {
-    // 译文没放进输入框就不发，避免发出原文
-    showFloat(box, '没能把译文放进输入框，消息未发送', '请点一下输入框再按 Enter；或按 Alt+Enter 发送原文', true);
-    setTimeout(hideFloat, 6000);
-    return;
-  }
-  await send(box, ad);
+  try {
+    if (original) { translatedDraft=null;hideFloat();await send(box, ad);return; }
+    const src=readBox(box),key=previewKey(s);
+    clearTimeout(previewTimer);const generation=++previewGeneration;
+    showFloat(box,englishUi()?'Translating…':'正在翻译…','');
+    const r=preview.src===src&&preview.key===key&&preview.result?.ok?preview.result:await request({text:src,...s.outgoing});
+    const current=()=>generation===previewGeneration&&box.isConnected&&cfg?.active&&settings()?.outgoing?.enabled&&previewKey(settings())===key;
+    if(!current()||readBox(box)!==src){hideFloat();return;}
+    if(!r.ok){showFloat(box,englishUi()?'Translation failed. Nothing was sent.':'翻译失败，消息未发送',failureReasons(r.error),true);return;}
+    const text=r.same?src:r.text;
+    if(typeof text!=='string'||!text.trim()){showFloat(box,englishUi()?'Translation was empty. Nothing was sent.':'译文为空，消息未发送','',true);return;}
+    preview={src:'',result:null};
+    if(!r.same&&!(await setBox(box,text))){showFloat(box,englishUi()?'Could not fill the translation. Nothing was sent.':'没能把译文放进输入框，消息未发送','',true);return;}
+    if(!current()||readBox(box)!==text.trim()){hideFloat();return;}
+    if(translateOnly){
+      translatedDraft={box,text:readBox(box),key};
+      showFloat(box,englishUi()?'Translation ready · Press Enter to send':'已翻译，按 Enter 发送',readBox(box));
+      return;
+    }
+    translatedDraft=null;hideFloat();await send(box,ad);
+  } finally {busy=false;}
 }
 
-window.addEventListener('keydown', (e) => {
-  if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.isComposing) return;
-  if (document.documentElement.dataset.wamBypass) return;
-  const ad = adapter();
-  const s = settings();
-  if (!ad || !s?.outgoing.enabled) return;
-  const box = composerOf(e.target, ad);
-  if (!box || !readBox(box)) return;
-  e.preventDefault();
-  e.stopImmediatePropagation();
-  translateAndSend(box, ad, s, e.altKey); // Alt+Enter：发送原文
-}, true);
+window.addEventListener('keydown',e=>{
+  if(document.documentElement.dataset.wamBypass||e.isComposing||e.keyCode===229)return;
+  const ad=adapter(),s=settings();
+  if(!ad||!cfg?.active||!s?.outgoing?.enabled)return;
+  const box=composerOf(e.target,ad);if(!box)return;
+  if(translationShortcut.matches(e,s.shortcut)){
+    e.preventDefault();e.stopImmediatePropagation();
+    if(!e.repeat&&readBox(box))translateAndSend(box,ad,s,false,true);
+    return;
+  }
+  if(e.key!=='Enter'||e.shiftKey||e.ctrlKey||e.metaKey||!readBox(box))return;
+  e.preventDefault();e.stopImmediatePropagation();
+  if(!e.repeat)translateAndSend(box,ad,s,e.altKey||translationShortcut.normalize(s.shortcut).enabled);
+},true);
 
-// 用鼠标点页面自己的发送按钮也要先翻译
-window.addEventListener('click', (e) => {
-  if (ourClick || !e.isTrusted) return;
-  const ad = adapter();
-  const s = settings();
-  if (!ad?.sendButton || !s?.outgoing.enabled || !findSendButton(ad)?.contains(e.target)) return;
-  const box = findComposer(ad);
-  if (!box || !readBox(box)) return;
-  e.preventDefault();
-  e.stopImmediatePropagation();
-  translateAndSend(box, ad, s, e.altKey);
-}, true);
+window.addEventListener('click',e=>{
+  if(ourClick||!e.isTrusted)return;
+  const ad=adapter(),s=settings();
+  if(!ad?.sendButton||!s?.outgoing?.enabled||!findSendButton(ad)?.contains(e.target))return;
+  const box=findComposer(ad);if(!box||!readBox(box))return;
+  e.preventDefault();e.stopImmediatePropagation();
+  translateAndSend(box,ad,s,e.altKey||translationShortcut.normalize(s.shortcut).enabled);
+},true);
 
 let previewTimer = null;
 let previewGeneration = 0;
@@ -723,11 +743,13 @@ function cancelPreview() {
   previewGeneration++;
   observedPreview = '';
   observedBox = null;
+  translatedDraft = null;
   preview = { src: '', result: null };
   hideFloat();
 }
 
 function queuePreview(target) {
+  if(translatedDraft){const draft=translatedDraft;if(draft.box.isConnected&&readBox(draft.box)===draft.text&&previewKey(settings())===draft.key)return;translatedDraft=null;hideFloat();}
   const ad = adapter();
   const s = settings();
   if (!ad || !cfg?.active || !s?.realtime || busy) return;
