@@ -1,0 +1,9 @@
+const clean=value=>String(value||'').replace(/[<>:"/\\|?*\x00-\x1f]/g,'-').replace(/[. ]+$/g,'').trim().slice(0,80);
+function deletionTime(at){return at?new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Singapore',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(new Date(at)):'删除时间未知';}
+function deletionIdentity(account){const me={phone:account.me?.phone||account.self?.phone,username:account.me?.username||account.self?.username};return me.phone?'+'+String(me.phone).replace(/^\+/,''):me.username?'@'+String(me.username).replace(/^@/,''):account.name||account.id;}
+function deletedName(account){return deletionIdentity(account)+' · '+deletionTime(account.deletedAt);}
+function deletedFileName(account){return clean(deletionIdentity(account))+'_'+deletionTime(account.deletedAt).replace(' ','_').replace(/:/g,'-')+'.blackcat';}
+function ensure(db){db.exec('CREATE TABLE IF NOT EXISTS deleted_accounts(account TEXT PRIMARY KEY,name TEXT,phone TEXT,username TEXT,deletedAt INTEGER)');}
+function record(db,account,at){ensure(db);const me={phone:account.me?.phone||account.self?.phone,username:account.me?.username||account.self?.username};db.prepare("INSERT INTO deleted_accounts VALUES(?,?,?,?,?) ON CONFLICT(account) DO UPDATE SET name=excluded.name,phone=CASE WHEN excluded.phone!='' THEN excluded.phone ELSE phone END,username=CASE WHEN excluded.username!='' THEN excluded.username ELSE username END,deletedAt=CASE WHEN deletedAt>0 THEN deletedAt ELSE excluded.deletedAt END").run(account.id,account.name||'',String(me.phone||'').replace(/[^0-9]/g,''),String(me.username||'').replace(/^@/,''),at||0);}
+function metadata(db,id){if(!db.prepare("SELECT 1 FROM sqlite_master WHERE name='deleted_accounts' AND type='table'").get())return null;return db.prepare('SELECT * FROM deleted_accounts WHERE account=?').get(id)||null;}
+module.exports={deletionTime,deletedName,deletedFileName,ensure,record,metadata};

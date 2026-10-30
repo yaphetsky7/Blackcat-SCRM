@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>黑猫SCRM 管理后台</title>
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <section id="login-view" class="login" hidden>
+    <form id="login-form" class="card login-card">
+      <h1>黑猫SCRM 管理后台</h1>
+      <label>管理员密码<input id="login-password" type="password" autocomplete="current-password" required></label>
+      <button class="primary" type="submit">登录</button>
+      <p id="login-error" class="error" role="alert"></p>
+    </form>
+  </section>
+
+  <div id="app-view" hidden>
+    <header class="top">
+      <strong>黑猫SCRM 管理后台</strong>
+      <nav>
+        <button data-tab="customers" class="tab active">客户</button>
+        <button data-tab="plans" class="tab">配套</button>
+        <button data-tab="updates" class="tab">软件更新</button>
+        <button data-tab="settings" class="tab">设置</button>
+      </nav>
+      <button id="logout" class="ghost">退出</button>
+    </header>
+
+    <main>
+      <section id="tab-customers">
+        <div class="stats" id="stats"></div>
+        <div class="toolbar">
+          <input id="search" type="search" placeholder="搜索用户名或备注">
+          <button id="new-customer" class="primary">＋ 新建客户</button>
+        </div>
+        <div class="table-wrap">
+          <table id="customers">
+            <thead><tr><th>用户名</th><th>配套</th><th>到期</th><th>账号上限</th><th>剩余点数</th><th>本月用量</th><th>电脑</th><th>状态</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="tab-plans" hidden>
+        <p class="muted">-1 表示不限。修改后立即对所有该配套的客户生效（每月点数在下次重置时生效）。</p>
+        <div id="plans"></div>
+      </section>
+
+      <section id="tab-updates" hidden>
+        <div class="card">
+          <h2>发布新版本</h2>
+          <p id="built-info" class="muted"></p>
+          <form id="publish-form">
+            <label>更新说明（客户会看到）<textarea id="publish-notes" rows="4" maxlength="4000" placeholder="例如：修复备份问题；翻译更快"></textarea></label>
+            <label class="check"><input id="publish-mandatory" type="checkbox"> 强制更新（旧版本必须更新后才能继续使用）</label>
+            <div class="row"><button id="publish-button" class="primary" type="submit">发布</button><span id="publish-status" class="muted"></span></div>
+          </form>
+        </div>
+        <div class="card">
+          <h2>当前已发布</h2>
+          <div id="release-info" class="muted">还没有发布过版本</div>
+          <form id="release-form" hidden>
+            <label>更新说明<textarea id="release-notes" rows="3" maxlength="4000"></textarea></label>
+            <label class="check"><input id="release-mandatory" type="checkbox"> 强制更新</label>
+            <button class="primary" type="submit">保存</button>
+          </form>
+        </div>
+        <div class="card">
+          <h2>客户电脑上的版本（最近 30 天）</h2>
+          <div class="table-wrap"><table id="versions"><thead><tr><th>版本</th><th>电脑数</th></tr></thead><tbody></tbody></table></div>
+        </div>
+      </section>
+
+      <section id="tab-settings" hidden>
+        <div class="card">
+          <h2>点数计算</h2>
+          <p class="muted">扣点 = 实际 Claude 费用（美元）× 1000 × 倍率。倍率 1 表示按成本扣点；2 表示每点含 50% 毛利。</p>
+          <form id="multiplier-form" class="row">
+            <label>倍率<input id="multiplier" type="number" min="0.1" max="100" step="0.1" required></label>
+            <button class="primary" type="submit">保存</button>
+          </form>
+          <p id="key-status" class="muted"></p>
+        </div>
+        <div class="card">
+          <h2>修改管理员密码</h2>
+          <form id="admin-password-form" class="row">
+            <label>当前密码<input id="admin-current" type="password" autocomplete="current-password" required></label>
+            <label>新密码（至少 10 位）<input id="admin-next" type="password" autocomplete="new-password" minlength="10" required></label>
+            <button class="primary" type="submit">修改</button>
+          </form>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="customer-dialog">
+    <form id="customer-form" method="dialog">
+      <h2 id="customer-title">新建客户</h2>
+      <div class="grid">
+        <label>用户名<input name="username" required pattern="[\w.@-]{3,40}"></label>
+        <label id="password-field">登录密码（至少 8 位）<input name="password" type="text" minlength="8" autocomplete="off"></label>
+        <label>配套<select name="plan"></select></label>
+        <label>到期日<input name="expires" type="date" required></label>
+        <label>额外账号数<input name="extraAccounts" type="number" min="0" value="0"></label>
+        <label class="check"><input name="unlimited" type="checkbox"> 无限使用（不扣点、不限账号和电脑、全部功能）</label>
+        <label class="check" id="disabled-field"><input name="disabled" type="checkbox"> 停用账号</label>
+        <label class="wide">备注<input name="note" maxlength="500"></label>
+      </div>
+      <p class="error" id="customer-error" role="alert"></p>
+      <footer><button value="cancel" formnovalidate class="ghost">取消</button><button id="customer-save" value="save" class="primary">保存</button></footer>
+    </form>
+  </dialog>
+
+  <dialog id="detail-dialog" class="wide-dialog">
+    <div class="detail-head"><h2 id="detail-title"></h2><button id="detail-close" class="ghost">关闭</button></div>
+    <div id="detail-summary" class="stats"></div>
+    <div class="detail-actions">
+      <form id="points-form" class="row">
+        <label>分配点数（负数为扣除）<input name="delta" type="number" step="1" required></label>
+        <label>说明<input name="note" placeholder="例如：充值 $10"></label>
+        <button class="primary" type="submit">确定</button>
+      </form>
+      <div class="row">
+        <button id="detail-edit" class="ghost">编辑客户</button>
+        <button id="detail-password" class="ghost">重设密码</button>
+        <button id="detail-delete" class="danger">删除客户</button>
+      </div>
+    </div>
+    <p class="error" id="detail-error" role="alert"></p>
+    <h3>每日用量（最近 30 天）</h3>
+    <div class="table-wrap"><table id="daily"><thead><tr><th>日期</th><th>功能</th><th>次数</th><th>输入 tokens</th><th>输出 tokens</th><th>Claude 费用</th><th>扣点</th></tr></thead><tbody></tbody></table></div>
+    <h3>点数记录</h3>
+    <div class="table-wrap"><table id="ledger"><thead><tr><th>时间</th><th>类型</th><th>点数</th><th>说明</th></tr></thead><tbody></tbody></table></div>
+    <h3>登录的电脑</h3>
+    <div class="table-wrap"><table id="devices"><thead><tr><th>电脑名称</th><th>软件版本</th><th>首次登录</th><th>最近使用</th><th></th></tr></thead><tbody></tbody></table></div>
+  </dialog>
+
+  <script src="admin.js"></script>
+</body>
+</html>

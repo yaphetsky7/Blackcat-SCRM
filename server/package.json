@@ -1,0 +1,13 @@
+{
+  "name": "blackcat-server",
+  "private": true,
+  "version": "1.0.0",
+  "description": "BlackCat SCRM license, points and Claude relay server",
+  "main": "index.js",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "start": "node index.js",
+    "setup": "node scripts/setup.js",
+    "plan-ids": "node scripts/plan-ids.js"
+  }
+}

@@ -1,0 +1,7 @@
+node_modules/
+dist/
+dist-next/
+# License server data: accounts, passwords, usage and published installers
+server/data/
+*.log
+.env

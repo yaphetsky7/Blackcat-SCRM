@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file: blackcat-archive:; media-src file: blackcat-archive:">
+  <title>黑猫SCRM</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="hub.css">
+  <script src="preferences.js"></script>
+</head>
+<body>
+  <!-- 最左侧：平台图标栏 -->
+  <nav id="rail">
+    <button id="home-btn" class="logo icon-btn" title="所有账号" aria-label="所有账号">
+      <img src="blackcat.svg" alt="黑猫SCRM" width="38" height="38">
+    </button>
+    <div id="platform-list"></div>
+    <div id="app-preferences">
+      <button id="app-settings-btn" class="icon-btn" title="设置" aria-label="设置"><svg viewBox="0 0 24 24"><path d="m9 3-1 3-3 1-2 4 2 2v3l4 3 3-1 3 1 4-3v-3l2-2-2-4-3-1-1-3z"/><circle cx="12" cy="11" r="3"/></svg></button>
+    </div>
+  </nav>
+
+  <!-- 第二栏：当前平台的会话列表 -->
+  <aside id="panel">
+    <header class="panel-head">
+      <h2 id="panel-title">WhatsApp</h2>
+      <button class="icon-btn" id="search-btn" title="搜索会话">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+      </button>
+      <span class="spacer"></span>
+      <button class="icon-btn" id="collapse-btn" title="收起列表">
+        <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h16M20 9l-3 3 3 3"/></svg>
+      </button>
+    </header>
+    <input id="search" placeholder="搜索会话名称" hidden>
+    <button id="new-btn" class="primary-btn">＋ 新建会话</button>
+    <ul id="session-list"></ul>
+    <p id="list-empty" hidden>还没有会话<br>点击上方「新建会话」添加账号</p>
+  </aside>
+
+  <button id="expand-btn" class="icon-btn" title="展开列表" hidden>
+    <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h16M17 9l3 3-3 3"/></svg>
+  </button>
+
+  <main id="views">
+    <section id="hub" hidden>
+      <header class="hub-header">
+        <div><h1 id="hub-title">所有账号</h1><p id="hub-status" class="hub-muted">点击账号查看消息；打开账号后，可在右侧设置 AI 回复。</p></div>
+        <span class="spacer"></span><button id="hub-back-messages" class="ghost-btn small" hidden>返回消息</button><button id="hub-back-home" class="ghost-btn small" hidden>返回首页</button>
+        <button id="hub-refresh" class="ghost-btn small" hidden>刷新消息</button>
+      </header>
+      <section id="hub-accounts" class="hub-page hub-accounts-page">
+        <div id="home-summary" class="home-summary"></div>
+        <div class="home-filter-bar"><input id="home-search" placeholder="搜索账号"><div id="home-platforms" class="home-platforms"></div></div>
+        <div id="home-account-grid" class="account-grid"></div><p id="home-accounts-empty" class="hub-empty" hidden>暂无账号，请从左侧选择平台并新建会话。</p>
+      </section>
+      <nav id="ai-navigation" hidden><button data-ai-tab="ai">账号 AI 回复</button><button data-ai-tab="knowledge">知识库</button><span class="hub-muted">Sonnet 学习 · Haiku 回复</span></nav>
+      <div id="hub-inbox" class="hub-page hub-inbox-grid" hidden>
+        <aside class="hub-conversations">
+          <input id="hub-search" placeholder="搜索联系人、消息或账号">
+          <div class="hub-filters" hidden><select id="hub-platform"><option value="">全部平台</option></select><select id="hub-account"><option value="">全部账号</option></select></div>
+          <label class="hub-check"><input id="hub-unread" type="checkbox"> 未读 / 待人工</label>
+          <p id="hub-count" class="hub-muted"></p>
+          <p class="hub-muted">显示当前账号已同步的会话，可加载更多。</p>
+          <ul id="hub-chat-list"></ul>
+          <p id="hub-list-empty" class="hub-empty">暂无已同步会话，正在读取账号消息。</p>
+          <button id="hub-more" class="link-btn">加载更多会话</button>
+        </aside>
+        <section class="hub-thread">
+          <header><div><h2 id="hub-thread-title" data-i18n-skip>选择一个会话</h2><p id="hub-thread-account" class="hub-muted" data-i18n-skip></p></div><span class="spacer"></span><button id="hub-native" class="link-btn" disabled>打开原平台</button></header>
+          <div id="hub-thread-notice" class="hub-notice" hidden></div>
+          <div id="hub-messages" data-i18n-skip><p class="hub-empty" id="hub-thread-empty">选择左侧会话即可在这里查看和回复。</p></div>
+          <label id="hub-private-label" class="hub-check" hidden><input id="hub-private" type="checkbox"> 我确认这是私聊，允许此会话 AI 回复</label>
+          <form id="hub-reply-form"><textarea id="hub-reply" rows="3" placeholder="输入消息" disabled></textarea><footer><button type="button" id="hub-suggest" class="ghost-btn small" disabled>AI 建议</button><span id="hub-send-status" class="hub-muted"></span><span class="spacer"></span><button id="hub-send" type="submit" class="primary-btn small" disabled>发送</button></footer></form>
+        </section>
+      </div>
+      <div id="hub-ai" class="hub-page hub-settings-grid ai-workspace" hidden>
+        <header class="ai-account-hero">
+          <div class="ai-account-heading"><div id="ai-hero-avatar" aria-hidden="true"></div><div><p class="ai-eyebrow">当前账号的 AI 助手</p><h2 id="ai-selected-account" data-i18n-skip>选择一个账号</h2><p id="ai-hero-description" class="hub-muted" data-i18n-skip></p></div></div>
+          <div class="ai-hero-actions"><span id="ai-hero-state" class="ai-state-pill" data-i18n-skip></span><label class="ai-switch"><input id="ai-enabled" type="checkbox" role="switch"><span class="ai-switch-track" aria-hidden="true"></span><span>自动回复</span></label><button id="ai-save" class="primary-btn small">保存设置</button></div>
+        </header>
+        <section class="hub-card ai-config-card">
+          <div class="ai-card-heading"><div><p class="ai-eyebrow">账号专属配置</p><h2>设置回复方式</h2></div><span class="ai-model-tag">Haiku</span></div>
+          <p id="ai-no-account" class="hub-muted">请先打开一个账号，再点击右侧 AI 回复。</p>
+          <fieldset id="ai-account-fields" disabled>
+            <section class="ai-config-section"><div class="ai-section-heading"><h3><span class="ai-step">01</span> 使用的知识库</h3><button id="ai-open-knowledge" class="link-btn" type="button">管理知识库</button></div><p class="hub-muted">每个账号选择一个知识库，作为回复依据。</p><div id="ai-base-checks"></div></section>
+            <section class="ai-config-section"><div class="ai-section-heading"><h3><span class="ai-step">02</span> 回复风格与要求</h3></div><textarea id="ai-instructions" rows="3" placeholder="例如：简洁友好，按客户的语言回复。"></textarea></section>
+            <section class="ai-guide-editor ai-config-section"><div class="ai-section-heading"><h3><span class="ai-step">03</span> 回复说明</h3><span class="ai-subtle-tag">可编辑</span></div><details class="ai-learning-summary"><summary>查看学习摘要</summary><p id="ai-learned-summary" class="hub-muted" data-i18n-skip></p></details><label class="sr-only" for="ai-reply-guide">回复说明（可直接修改）</label><textarea id="ai-reply-guide" rows="9" placeholder="学习后会显示建议的回复方式，也可以在右侧与 AI 讨论修改。"></textarea><p class="hub-muted">编辑或采用修改稿后，保存设置才会用于自动回复。</p></section>
+            <details class="ai-advanced"><summary>回复节奏与每日上限</summary><div class="hub-fields"><div><label for="ai-delay">等待客户补充消息（秒）</label><input id="ai-delay" type="number" min="2" max="120" value="5"></div><div><label for="ai-daily">每日自动回复上限</label><input id="ai-daily" type="number" min="1" max="10000" value="200"></div></div></details>
+            <p id="ai-config-status" class="ai-inline-status"></p>
+            <div class="ai-safety-note"><span aria-hidden="true">◇</span><p>只回复新收到的文字私聊。资料不足时会告知客户需人工核实，并记录转人工原因；旧消息不补发。</p></div>
+          </fieldset>
+          <details class="ai-integrations"><summary>模型与连接设置</summary><div class="ai-model-strip"><span>Sonnet 学习资料</span><span>Haiku 自动回复</span></div>
+            <details><summary>Claude API Key</summary><p id="ai-key-status" class="hub-muted"></p><button type="button" class="ghost-btn small open-api-settings">在设置中配置 Claude API Key</button><p class="hub-muted">所有功能共用设置中的同一个 Key。学习资料和生成回复会使用你的 API 额度。</p></details>
+            <details id="transcription-settings"><summary>音视频转写设置</summary><p class="hub-muted">音视频先由转写服务提取语音，再交给 Sonnet 学习。视频同时读取最多 8 张抽样画面。转写服务单独计费。</p><label for="asr-endpoint">转写 API 地址</label><input id="asr-endpoint" type="url" placeholder="https://api.openai.com/v1/audio/transcriptions"><label for="asr-model">转写模型</label><input id="asr-model" placeholder="gpt-transcribe"><label for="asr-key">转写 API Key（留空保留原值）</label><input id="asr-key" type="password" autocomplete="off"><p id="asr-status" class="hub-muted"></p><button id="asr-save" class="ghost-btn small">保存转写设置</button></details>
+          </details>
+        </section>
+        <section class="hub-card ai-assistant-card">
+          <div class="ai-card-heading"><div class="ai-assistant-heading"><span class="ai-sonnet-mark" aria-hidden="true">S</span><div><p class="ai-eyebrow">回复共创</p><h2>和 Sonnet 讨论怎么改</h2></div></div><button id="ai-guide-clear" type="button" class="ai-clear-btn" title="仅清空当前账号的讨论，保留已保存的回复说明。">清空聊天</button></div>
+          <p class="hub-muted">告诉 AI 你想怎样回复，先查看建议，再决定是否采用。</p>
+          <div id="ai-guide-messages" role="log" aria-live="polite" data-i18n-skip></div>
+          <div class="ai-suggestion-row"><button type="button" data-guide-suggestion="更亲切一点">更亲切一点</button><button type="button" data-guide-suggestion="回答更简洁">回答更简洁</button><button type="button" data-guide-suggestion="先询问需求">先询问需求</button></div>
+          <form id="ai-guide-chat-form" class="ai-chat-composer"><textarea id="ai-guide-request" rows="3" placeholder="例如：先了解客户需求，再介绍适合的方案。"></textarea><footer><button id="ai-guide-summarize" type="button" class="link-btn">总结回复方式</button><button id="ai-guide-ask" type="submit" class="primary-btn small">发送</button></footer></form>
+          <button id="ai-guide-apply" type="button" class="ai-apply-btn" hidden>采用 AI 修改稿</button><p id="ai-guide-status" class="hub-muted" role="status"></p>
+        </section>
+        <section class="hub-card ai-validation-card">
+          <details class="ai-test-details" open><summary>测试当前账号的知识库</summary><p class="hub-muted">预览 AI 如何回答，测试不会发送给客户。</p><textarea id="ai-test-question" rows="2" placeholder="输入客户可能问的问题"></textarea><button id="ai-test" class="ghost-btn small">测试 AI 回复</button><pre id="ai-test-result" data-i18n-skip></pre></details>
+          <details class="ai-history-details"><summary>AI 回复记录</summary><ul id="ai-jobs"></ul></details>
+        </section>
+      </div>
+
+      <div id="hub-knowledge" class="hub-page hub-knowledge-grid" hidden>
+        <aside class="hub-card"><h2>多个知识库</h2><input id="kb-new-name" maxlength="80" placeholder="知识库名称"><button id="kb-create" class="primary-btn small">新建知识库</button><ul id="kb-list"></ul></aside>
+        <section class="hub-card"><h2 id="kb-title" data-i18n-skip>选择或新建一个知识库</h2><div id="kb-detail" hidden>
+          <div class="hub-fields"><input id="kb-name" maxlength="80"><button id="kb-rename" class="ghost-btn small">重命名</button><button id="kb-remove" class="link-btn danger-text">删除知识库</button></div>
+          <p class="hub-muted">添加学习来源；每份资料最多 25 MB，最多 30 份。学习完成后可分配给多个账号。</p>
+          <div id="kb-source-types" class="kb-source-types"><button data-source="content"><span>≡</span>文字内容</button><button data-source="url"><span>↗</span>URL 链接</button><button data-source="file" id="kb-import"><span>▤</span>文件</button><button data-source="media"><span>▧</span>媒体</button><button data-source="sheet"><span>▦</span>Google Sheet</button><button data-source="api"><span>⌘</span>API</button></div>
+          <form id="kb-source-form" hidden>
+            <div class="hub-fields"><h3 id="kb-source-title">添加来源</h3><span class="spacer"></span><button type="button" id="kb-source-cancel" class="link-btn">取消</button></div>
+            <label for="kb-source-name">资料名称（可选）</label><input id="kb-source-name" maxlength="200">
+            <div id="kb-content-fields"><label for="kb-source-text">学习内容</label><textarea id="kb-source-text" rows="7" maxlength="350000" placeholder="粘贴产品介绍、价格、FAQ 或回复规则"></textarea></div>
+            <div id="kb-link-fields" hidden><label for="kb-source-url">链接 / API 地址</label><input id="kb-source-url" type="url" placeholder="https://"><p id="kb-link-help" class="hub-muted"></p><details><summary>访问认证（可选）</summary><label for="kb-source-token">Bearer 访问令牌</label><input id="kb-source-token" type="password" autocomplete="off"><label for="kb-source-headers">自定义请求头（JSON）</label><textarea id="kb-source-headers" rows="3" placeholder='{"X-API-Key":"…"}'></textarea></details><div id="kb-json-fields" hidden><label for="kb-source-path">JSON 数据路径（可选，例如 data.products）</label><input id="kb-source-path"></div></div>
+            <div id="kb-media-fields" hidden><p class="hub-muted">图片：JPG / PNG / GIF / WebP。音频：MP3 / WAV / M4A / OGG / FLAC。视频：MP4 / WebM / MOV。音视频默认学习语音，视频同时学习抽样画面。</p><label class="hub-check"><input id="kb-visual-only" type="checkbox"> 仅学习视频画面（无语音，不调用转写 API）</label></div>
+            <p id="kb-source-feedback" class="hub-notice" hidden></p><button type="submit" id="kb-source-submit" class="primary-btn small">添加资料</button>
+          </form>
+          <div class="hub-fields"><button id="kb-learn" class="primary-btn small">让 Sonnet 学习资料</button></div>
+          <p class="hub-muted">只学习新增、更新或失败的资料，已学习的资料不会重复扣费。学习会将待学习资料发送给 Sonnet；链接或 API 更新后，可刷新来源再学习。</p>
+          <p id="kb-status" class="hub-notice"></p><ul id="kb-documents"></ul><pre id="kb-summary" data-i18n-skip></pre>
+        </div></section>
+      </div>
+    </section>
+    <div id="empty">
+      <div class="empty-inner">
+        <div id="empty-icon"></div>
+        <h1 id="empty-title">黑猫SCRM</h1>
+        <p id="empty-text">选择左侧的会话，或点击「新建会话」</p>
+      </div>
+    </div>
+    <div id="toast" hidden></div>
+  </main>
+
+  <!-- 右侧工具面板：由最右边的工具栏打开，一次只显示一个 -->
+  <aside id="tr-panel" hidden>
+    <header class="tr-head">
+      <h2 id="tool-title">翻译设置</h2>
+      <span class="spacer"></span>
+      <button class="icon-btn" id="tr-close" title="收起">
+        <svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+      </button>
+    </header>
+
+    <section id="tab-notes" class="side-section" hidden>
+      <div class="notes-heading"><span class="notes-symbol" aria-hidden="true">✎</span><div><p id="notes-account" class="hub-muted" data-i18n-skip></p><h3 id="notes-conversation" data-i18n-skip></h3></div></div>
+      <p id="notes-empty" class="hub-notice">打开一个对话，即可添加备注。</p>
+      <div id="notes-editor" hidden><label for="notes-text">备注内容</label><textarea id="notes-text" rows="12" placeholder="例如：客户偏好、沟通记录、下次跟进事项……" disabled></textarea><div class="notes-save-row"><span id="notes-status" role="status" aria-live="polite" data-i18n-skip></span><button type="button" id="notes-retry" class="link-btn" hidden>重试保存</button></div></div>
+      <p class="hub-muted notes-privacy">自动保存。备注仅保存在本机，不会发送给对方。</p>
+    </section>
+
+    <!-- 快捷回复 -->
+    <section id="tab-quick" class="side-section" hidden>
+      <div class="qr-scope">
+        <button class="qr-scope-btn" data-scope="personal">个人</button>
+        <button class="qr-scope-btn" data-scope="public">公共</button>
+      </div>
+      <div class="qr-mode">
+        <label><input type="radio" name="qr-mode" value="direct"> 直接发送</label>
+        <label><input type="radio" name="qr-mode" value="translate"> 文字先翻译再发送</label>
+      </div>
+      <p id="qr-hint"></p>
+      <div id="qr-groups"></div>
+      <div id="qr-empty" hidden>
+        <svg viewBox="0 0 160 110" class="qr-illus"><ellipse cx="80" cy="96" rx="62" ry="8" fill="#eef3ff"/><rect x="34" y="40" width="92" height="46" rx="8" fill="#3370ff"/><path d="M104 86l12 14V86z" fill="#3370ff"/><rect x="46" y="54" width="56" height="5" rx="2.5" fill="#fff"/><rect x="46" y="66" width="40" height="5" rx="2.5" fill="#fff"/><circle cx="58" cy="22" r="12" fill="#e8f0ff" stroke="#3370ff" stroke-width="2"/><text x="58" y="27" text-anchor="middle" font-size="14" font-weight="700" fill="#3370ff">?</text></svg>
+        <p>暂未设置回复内容</p>
+        <button id="qr-add-empty" class="link-btn">立即添加</button>
+      </div>
+      <div class="qr-actions">
+        <button id="qr-add-group" class="ghost-btn">＋ 新建分组</button>
+        <button id="qr-add" class="primary-btn">＋ 添加回复</button>
+      </div>
+    </section>
+
+    <!-- 联系人 -->
+    <section id="tab-contacts" class="side-section" hidden>
+      <div class="seg" id="ct-seg">
+        <button data-view="account">账号联系人</button>
+        <button data-view="mine">我的联系人</button>
+      </div>
+      <div class="ct-bar" id="ct-account-bar">
+        <select id="ct-account"></select>
+        <button id="ct-sync" class="ghost-btn small" title="重新读取账号联系人">↻ 同步</button>
+      </div>
+      <div class="ct-bar" id="ct-mine-bar">
+        <button id="ct-add" class="ghost-btn small">＋ 添加</button>
+        <button id="ct-from-excel" class="ghost-btn small" title="第 1 列号码/username，第 2 列名字">导入 Excel</button>
+      </div>
+      <p id="ct-summary"></p>
+      <input id="ct-search" placeholder="搜索名字 / 号码 / username">
+      <div class="select-bar">
+        <label><input type="checkbox" id="ct-all"> 全选</label>
+        <span id="ct-selected"></span>
+        <span class="spacer"></span>
+        <button id="ct-to-mine" class="link-btn">加入我的联系人</button>
+        <button id="ct-to-list" class="link-btn">建群发名单</button>
+        <button id="ct-delete" class="link-btn danger-text">删除</button>
+      </div>
+      <ul id="ct-list"></ul>
+      <p id="ct-empty" hidden></p>
+    </section>
+
+    <!-- 群发消息 -->
+    <section id="tab-bulk" class="side-section" hidden>
+      <div class="seg three" id="bk-seg">
+        <button data-view="tasks">群发任务</button>
+        <button data-view="templates">文案库</button>
+        <button data-view="lists">名单库</button>
+      </div>
+
+      <div class="bk-view" id="bk-tasks">
+        <div class="bk-tools">
+          <span id="bk-task-summary"></span>
+          <span class="spacer"></span>
+          <button id="bk-new-task" class="primary-btn small">＋ 新建任务</button>
+        </div>
+        <ul id="bk-task-list"></ul>
+        <p class="bk-empty" id="bk-task-empty">还没有群发任务，点「新建任务」开始</p>
+      </div>
+
+      <div class="bk-view" id="bk-editor" hidden>
+        <button id="bk-editor-back" class="link-btn bk-back">‹ 返回任务列表</button>
+        <label class="bk-label" for="te-name">任务名称</label>
+        <input id="te-name" class="bk-input" maxlength="40">
+        <label class="bk-label" for="te-template">文案</label>
+        <select id="te-template" class="bk-input"></select>
+        <label class="bk-label" for="te-list">群发名单</label>
+        <select id="te-list" class="bk-input"></select>
+        <div class="bk-row">
+          <button id="te-manual" class="ghost-btn small">手动新建群发名单</button>
+          <button id="te-import" class="ghost-btn small">导入 Excel 为新名单</button>
+          <button id="te-template-dl" class="ghost-btn small">下载模板</button>
+        </div>
+        <p class="bulk-tip" id="te-vars"></p>
+        <label class="bk-label">预览（第一位收件人）</label>
+        <div id="te-preview" class="bk-preview"></div>
+        <label class="bk-label">发送账号</label>
+        <div id="te-accounts"></div>
+        <p class="bulk-tip" id="te-split"></p>
+        <label class="bulk-interval">
+          <input type="checkbox" id="te-int-on"> 每个账号的消息间隔
+          <input id="te-int-value" type="number" min="1" step="1" value="30">
+          <select id="te-int-unit">
+            <option value="1">秒</option>
+            <option value="60">分钟</option>
+            <option value="3600">小时</option>
+          </select>
+        </label>
+        <p class="bulk-tip" id="te-int-tip"></p>
+        <p class="modal-error" id="te-error"></p>
+        <button id="te-start" class="primary-btn">开始群发</button>
+      </div>
+
+      <div class="bk-view" id="bk-detail" hidden>
+        <button id="bk-detail-back" class="link-btn bk-back">‹ 返回任务列表</button>
+        <div id="bk-detail-head"></div>
+        <div class="rcp-table-wrap tall"><table id="bk-detail-table"></table></div>
+      </div>
+
+      <div class="bk-view" id="bk-templates" hidden>
+        <div class="bk-tools">
+          <span class="spacer"></span>
+          <button id="tp-add-group" class="ghost-btn small">＋ 新建分组</button>
+          <button id="tp-add" class="primary-btn small">＋ 新建文案</button>
+        </div>
+        <div class="select-bar">
+          <label><input type="checkbox" id="tp-all"> 全选</label>
+          <span id="tp-selected"></span>
+          <span class="spacer"></span>
+          <select id="tp-move"></select>
+          <button id="tp-delete" class="link-btn danger-text">删除</button>
+        </div>
+        <div id="tp-groups"></div>
+        <p class="bk-empty" id="tp-empty">还没有文案，点「新建文案」添加</p>
+      </div>
+
+      <div class="bk-view" id="bk-lists" hidden>
+        <div class="bk-tools">
+          <span id="ls-summary"></span>
+          <span class="spacer"></span>
+          <button id="ls-template" class="ghost-btn small">下载模板</button>
+          <button id="ls-manual" class="ghost-btn small">手动输入</button>
+          <button id="ls-import" class="primary-btn small">导入 Excel</button>
+        </div>
+        <div class="select-bar">
+          <label><input type="checkbox" id="ls-all"> 全选</label>
+          <span id="ls-selected"></span>
+          <span class="spacer"></span>
+          <button id="ls-delete" class="link-btn danger-text">删除</button>
+        </div>
+        <ul id="ls-list"></ul>
+        <p class="bk-empty" id="ls-empty">还没有名单：可手动输入、导入 Excel，或在「联系人」里勾选后点「建群发名单」</p>
+      </div>
+    </section>
+
+    <!-- 翻译设置 -->
+    <section id="tab-translate" class="side-section">
+    <p id="tr-empty">请先在左侧选择一个会话</p>
+    <div id="tr-body">
+      <p id="tr-target"></p>
+
+      <div class="tr-switch">
+        <span>粉丝独立翻译 <i class="tip" title="开启后，每个联系人可以单独设置翻译语言；没单独设置的联系人使用默认设置">ⓘ</i></span>
+        <label class="switch"><input type="checkbox" id="tr-percontact"><span></span></label>
+      </div>
+      <p id="tr-scope"></p>
+
+      <div class="tr-switch strong">
+        <span>历史消息翻译设置</span>
+        <label class="switch"><input type="checkbox" id="tr-in-enabled"><span></span></label>
+      </div>
+      <div class="tr-group" id="tr-in">
+        <div class="tr-row"><label for="tr-in-target">历史消息翻译</label><select id="tr-in-target"></select></div>
+        <div class="tr-row"><label for="tr-in-route">翻译路线</label><select id="tr-in-route"></select></div>
+        <div class="tr-row"><label for="tr-in-source">源语言</label><select id="tr-in-source"></select></div>
+      </div>
+
+      <div class="tr-switch strong">
+        <span>发送语言翻译设置</span>
+        <label class="switch"><input type="checkbox" id="tr-out-enabled"><span></span></label>
+      </div>
+      <div class="tr-group" id="tr-out">
+        <div class="tr-row"><label for="tr-out-target">输入框翻译</label><select id="tr-out-target"></select></div>
+        <div class="tr-row"><label for="tr-out-route">翻译路线</label><select id="tr-out-route"></select></div>
+        <div class="tr-row"><label for="tr-out-source">源语言</label><select id="tr-out-source"></select></div>
+      </div>
+
+      <div class="tr-switch strong">
+        <span>实时翻译 <i class="tip" title="输入时在输入框上方预览译文">ⓘ</i></span>
+        <label class="switch"><input type="checkbox" id="tr-realtime"><span></span></label>
+      </div>
+      <p class="tr-tip">开启发送翻译后：Enter 发送译文，Alt+Enter 发送原文</p>
+
+      <details class="tr-advanced">
+        <summary>测试翻译 / Lingva 服务器</summary>
+        <div class="tr-test">
+          <input id="tr-test-text" placeholder="输入一句话，按历史消息设置翻译">
+          <button id="tr-test-btn">测试</button>
+        </div>
+        <p id="tr-test-result"></p>
+        <p id="tr-claude-status"></p>
+        <button type="button" class="link-btn open-api-settings">在设置中配置 Claude API Key</button>
+        <label for="tr-lingva">Lingva 服务器（每行一个，可填自建地址，所有会话共用）</label>
+        <textarea id="tr-lingva" rows="3"></textarea>
+      </details>
+    </div>
+    </section>
+  </aside>
+
+  <!-- 最右侧工具栏 -->
+  <nav id="toolbar">
+<button class="tool-btn" data-tool="env" title="当前会话的名称 / 代理">
+      <span class="tool-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.6 2.6 14.4 0 17M12 3.5c-2.6 2.6-2.6 14.4 0 17"/></svg></span>
+      <span class="tool-label">环境设置</span>
+    </button>
+<button class="tool-btn" data-tab="translate" title="翻译设置">
+      <span class="tool-icon"><svg viewBox="0 0 24 24"><path class="fill" d="M12.87 15.07l-2.54-2.51.03-.03A17.52 17.52 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"/></svg></span>
+      <span class="tool-label">翻译设置</span>
+    </button>
+<button class="tool-btn" data-tab="quick" title="快捷设置">
+      <span class="tool-icon"><svg viewBox="0 0 24 24"><path d="M7 4h12a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9l-4 4V6a2 2 0 0 1 2-2z"/><path class="fill" d="M13.2 6.8L9.6 11.4h2.6l-.9 3.4 3.7-4.7h-2.6z"/></svg></span>
+      <span class="tool-label">快捷设置</span>
+    </button>
+<button class="tool-btn wa-tg" data-tab="contacts" title="联系人">
+      <span class="tool-icon"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="15" height="18" rx="2.5"/><circle cx="11.5" cy="10" r="2.6"/><path d="M7.5 17c.7-2 2.2-3 4-3s3.3 1 4 3M19 7h2M19 12h2"/></svg></span>
+      <span class="tool-label">联系人</span>
+    </button>
+<button class="tool-btn" data-tab="notes" title="对话备注"><span class="tool-icon"><svg viewBox="0 0 24 24"><path d="M13 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7M14 5l4-4 4 4-10 10-5 1 1-5zM8 19h8"/></svg></span><span class="tool-label">备注</span></button>
+<button class="tool-btn wa-tg" data-tab="bulk" title="群发消息">
+      <span class="tool-icon"><svg viewBox="0 0 24 24"><path d="M4 5h12a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H9l-4 3.5V7a2 2 0 0 1-1-2z"/><path d="M8 9h6M8 12h4"/><path d="M20 9v8a2 2 0 0 1-2 2h-6"/></svg></span>
+      <span class="tool-label" id="bulk-tool-label">群发消息</span>
+      <span id="bulk-badge" class="tool-badge" hidden></span>
+    </button>
+<button class="tool-btn" id="ai-tool-btn" data-tool="ai" title="AI 回复"><span class="tool-icon ai-tool-icon">AI</span><span class="tool-label">AI 回复</span></button>
+</nav>
+
+  <!-- 快捷回复模板编辑 -->
+  <div id="qr-modal" hidden>
+    <form id="qr-form" autocomplete="off">
+      <h2 id="qr-modal-title">添加快捷回复</h2>
+      <label for="qr-group">分组</label>
+      <select id="qr-group"></select>
+      <label for="qr-text">回复文字（可留空）</label>
+      <textarea id="qr-text" rows="5" placeholder="输入要发送的文字"></textarea>
+      <div class="qr-files-head">
+        <span>附件（照片 / 视频 / 其他文件）</span>
+        <button type="button" id="qr-pick" class="link-btn">＋ 添加附件</button>
+      </div>
+      <ul id="qr-files"></ul>
+      <p id="qr-form-error"></p>
+      <footer>
+        <button type="button" id="qr-cancel">取消</button>
+        <button type="submit" class="primary">保存</button>
+      </footer>
+    </form>
+  </div>
+
+  <div id="ctx-menu" hidden>
+    <button data-act="settings">环境设置（名称 / 代理）</button>
+    <button data-act="pin">置顶 / 取消置顶</button>
+    <button data-act="reload">刷新</button>
+    <button data-act="devtools">开发者工具</button>
+    <hr>
+    <button data-act="remove" class="danger">删除会话</button>
+  </div>
+
+  <div id="settings" hidden>
+    <form id="settings-panel" autocomplete="off">
+      <header>
+        <h2>环境设置</h2>
+        <span id="settings-account"></span>
+        <button type="button" id="settings-close" title="关闭">×</button>
+      </header>
+
+      <div class="section-head"><h3>基本信息</h3></div>
+      <div class="fields">
+        <div class="row">
+          <label for="acc-name">名称</label>
+          <input id="acc-name" maxlength="30" placeholder="会话名称">
+        </div>
+      </div>
+
+      <div class="account-sound-setting"><label>消息铃声 <input id="acc-message-sound" type="checkbox"></label><button type="button" id="acc-sound-preview" class="ghost-btn small">试听</button><small>账号独立开关；设置后立即生效。全局消息铃声关闭时，此账号也不会响铃。</small><p id="account-sound-status" role="status" data-i18n-skip></p></div>
+      <div class="section-head">
+        <h3>代理设置</h3>
+        <label class="switch" title="启用代理">
+          <input type="checkbox" id="px-enabled">
+          <span></span>
+        </label>
+      </div>
+
+      <fieldset id="px-fields" class="fields">
+        <div class="row">
+          <label for="px-protocol">协议</label>
+          <select id="px-protocol">
+            <option value="http">HTTP / HTTPS</option>
+            <option value="socks5">SOCKS5</option>
+          </select>
+        </div>
+        <div class="row">
+          <label for="px-host">主机</label>
+          <input id="px-host" placeholder="请输入主机地址">
+          <label for="px-port" class="inline">端口</label>
+          <input id="px-port" class="port" placeholder="请输入端口号" inputmode="numeric">
+        </div>
+        <div class="row">
+          <label for="px-user">用户名</label>
+          <input id="px-user" placeholder="没有可留空">
+        </div>
+        <div class="row">
+          <label for="px-pass">密码</label>
+          <input id="px-pass" type="password" placeholder="没有可留空">
+          <button type="button" id="px-test" class="test-btn">检测配置</button>
+        </div>
+        <div class="row top">
+          <label for="px-smart" title="支持 host:port:user:pass、user:pass@host:port、socks5://user:pass@host:port 等格式">智能填写 ⓘ</label>
+          <textarea id="px-smart" rows="3" placeholder="粘贴IP信息到此处，自动识别&#10;例如 1.2.3.4:1080:user:pass"></textarea>
+        </div>
+        <div id="px-result"></div>
+      </fieldset>
+
+      <footer>
+        <button type="button" id="settings-cancel">取消</button>
+        <button type="submit" class="primary">保存</button>
+      </footer>
+    </form>
+  </div>
+
+  <!-- 联系人编辑 -->
+  <div id="ct-modal" class="modal-wrap" hidden>
+    <form id="ct-form" class="modal-card" autocomplete="off">
+      <h2 id="ct-modal-title">添加联系人</h2>
+      <label for="ct-name">名字</label>
+      <input id="ct-name" maxlength="60">
+      <label for="ct-id" id="ct-id-label">电话号码</label>
+      <input id="ct-id" maxlength="40">
+      <p class="modal-error" id="ct-error"></p>
+      <footer>
+        <button type="button" id="ct-cancel">取消</button>
+        <button type="submit" class="primary">保存</button>
+      </footer>
+    </form>
+  </div>
+
+  <!-- 文案编辑 -->
+  <div id="tpl-modal" class="modal-wrap" hidden>
+    <div class="modal-card wide-card">
+      <h2 id="tm-title">新建文案</h2>
+      <div class="bk-row">
+        <div class="col"><label for="tm-group">分组</label><select id="tm-group"></select></div>
+        <div class="col grow"><label for="tm-name">名称</label><input id="tm-name" maxlength="40" placeholder="如：新品通知"></div>
+      </div>
+      <label for="tm-text">文字</label>
+      <textarea id="tm-text" rows="7" placeholder="用 @变量名 引用名单里的列，例如：你好 @名字，你的订单 @订单号 已发货"></textarea>
+      <div class="tpl-translate">
+        <span>翻译成</span>
+        <select id="tm-lang"></select>
+        <button id="tm-translate" class="ghost-btn small">翻译文字</button>
+        <span id="tm-translate-msg"></span>
+      </div>
+      <div class="qr-files-head">
+        <span>附件（照片 / 视频 / 其他文件）</span>
+        <button type="button" id="tm-pick" class="link-btn">＋ 添加附件</button>
+      </div>
+      <ul id="tm-files" class="file-list"></ul>
+      <p class="modal-error" id="tm-error"></p>
+      <footer>
+        <button type="button" id="tm-cancel">取消</button>
+        <button type="button" id="tm-save" class="primary">保存</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- 查看 / 编辑名单 -->
+  <div id="list-modal" class="modal-wrap" hidden>
+    <div class="modal-card xl-card">
+      <div class="bk-row">
+        <h2 id="lm-title"></h2>
+        <span class="spacer"></span>
+        <span id="lm-count" class="bulk-tip"></span>
+      </div>
+      <p id="lm-help" class="bulk-tip">第 2 列起是变量，点表头可以改变量名（文案里用 @变量名 调用）；点 × 删除一行。修改会自动保存。</p>
+      <div class="rcp-table-wrap tall"><table id="lm-table"></table></div>
+      <footer>
+        <button type="button" id="lm-export">导出 Excel</button>
+        <span class="spacer"></span>
+        <button type="button" id="lm-close" class="primary">完成</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- 手动新建名单 / 追加收件人 -->
+  <div id="manual-list-modal" class="modal-wrap" hidden>
+    <div class="modal-card wide-card" role="dialog" aria-modal="true" aria-labelledby="ml-title">
+      <h2 id="ml-title">手动输入收件人</h2>
+      <p id="ml-context" class="bulk-tip"></p>
+      <label id="ml-name-label" for="ml-name">名单名称</label>
+      <input id="ml-name" maxlength="40" placeholder="如：活动通知名单">
+      <label id="ml-target-label" for="ml-targets">收件人</label>
+      <textarea id="ml-targets" rows="8" spellcheck="false" aria-describedby="ml-hint ml-summary ml-error"></textarea>
+      <p id="ml-hint" class="bulk-tip"></p>
+      <label class="manual-save-option"><input type="checkbox" id="ml-persist" checked> 保存到名单库</label>
+      <p id="ml-persist-hint" class="bulk-tip">取消勾选时，名单仅用于本次群发，不保存到名单库。</p>
+      <p id="ml-summary" class="bulk-tip" aria-live="polite"></p>
+      <p id="ml-error" class="modal-error" role="alert"></p>
+      <footer>
+        <button type="button" id="ml-cancel">取消</button>
+        <button type="button" id="ml-save" class="primary" disabled>保存名单</button>
+      </footer>
+    </div>
+  </div>
+
+  <div id="name-modal" hidden>
+    <form id="name-form" autocomplete="off">
+      <h2 id="name-title">新建分组</h2>
+      <input id="name-input" maxlength="20" placeholder="分组名称">
+      <footer>
+        <button type="button" id="name-cancel">取消</button>
+        <button type="submit" class="primary">确定</button>
+      </footer>
+    </form>
+  </div>
+
+  <dialog id="platform-picker" aria-labelledby="platform-picker-title" aria-describedby="platform-picker-description">
+    <header class="platform-picker-head"><div><p class="picker-eyebrow">连接新账号</p><h2 id="platform-picker-title">新建会话</h2></div><button type="button" id="platform-picker-close" class="icon-btn" aria-label="关闭" title="关闭">×</button></header>
+    <p id="platform-picker-description">选择你要登录的平台</p>
+    <div id="platform-picker-options"></div>
+    <p class="platform-picker-footnote">每个账号独立登录，聊天和设置分别保留。</p>
+  </dialog>
+
+  <dialog id="app-settings-dialog" aria-labelledby="app-settings-title">
+    <header class="app-settings-head"><div><p class="picker-eyebrow">黑猫SCRM</p><h2 id="app-settings-title">设置</h2></div><button type="button" class="icon-btn" id="app-settings-close" title="关闭">×</button></header>
+    <div class="app-settings-tabs"><button type="button" data-settings-tab="account">账户</button><button type="button" data-settings-tab="general">常规</button><button type="button" data-settings-tab="apikey">API Key</button><button type="button" data-settings-tab="system">系统设置</button><button type="button" data-settings-tab="platforms">平台设置</button><button type="button" data-settings-tab="backup">本地备份</button></div>
+    <section id="settings-general"><label class="app-setting-row"><span>界面语言</span><select id="setting-language"><option value="zh-CN">简体中文</option><option value="en">English</option></select></label><fieldset class="theme-picker"><legend>主题颜色</legend><label class="theme-system"><input type="radio" name="theme-mode" value="system">跟随系统<small>根据 Windows 的外观自动切换深浅色</small></label><div class="theme-choices"><label class="theme-card theme-light"><span class="theme-preview"><i></i><i></i></span><span><input type="radio" name="theme-mode" value="light">明亮</span></label><label class="theme-card theme-dark"><span class="theme-preview"><i></i><i></i></span><span><input type="radio" name="theme-mode" value="dark">暗黑</span></label></div></fieldset><label class="app-setting-row"><span>所有账号保持在线</span><input type="checkbox" id="setting-online"></label><p class="hub-muted">关闭后，未打开的账号可节省内存；开启 AI 或本地归档的账号仍需保持在线。</p></section>
+    <section id="settings-license" hidden></section>
+    <section id="settings-apikey" hidden><h3>AI 使用方式</h3><div class="ai-mode-switch" role="radiogroup" aria-label="AI 使用方式"><label><input type="radio" name="claude-mode" value="points"><span><strong>黑猫 AI 点数</strong><small>按用量扣账户点数，不需要自己的 Key</small></span></label><label><input type="radio" name="claude-mode" value="own"><span><strong>自己的 Claude Key</strong><small>费用由你直接付给 Anthropic，不扣点数</small></span></label></div><p id="claude-mode-note" class="hub-muted"></p><h3>Claude API Key</h3><p class="hub-muted">选择「自己的 Claude Key」时使用这里保存的 Key。切换到黑猫点数不会删除 Key。Key 加密保存在本机，可到 console.anthropic.com 申请。</p><p id="api-claude-status" class="api-key-status"></p><div class="api-key-row"><input id="api-claude-key" type="password" placeholder="sk-ant-…" autocomplete="off"><button type="button" id="api-claude-save" class="primary-btn small">保存并测试</button></div><button type="button" id="api-claude-remove" class="link-btn" hidden>删除已保存的 Key</button><p id="api-claude-result" class="hub-muted"></p></section>
+    <section id="settings-system" hidden><h3>系统设置</h3><label class="app-setting-row"><span>系统消息提示</span><input type="checkbox" id="setting-notifications"></label><label class="app-setting-row"><span>系统消息提示声音</span><input type="checkbox" id="setting-notification-sound"></label><p class="hub-muted">消息铃声总开关；每个账号可在环境设置中独立开关。聊天语音和视频不受影响。</p><label class="app-setting-row"><span>页面缩放</span><select id="setting-zoom"><option value="0.75">75%</option><option value="0.9">90%</option><option value="1">100%</option><option value="1.1">110%</option><option value="1.25">125%</option><option value="1.5">150%</option></select></label><p class="hub-muted">调整所有账号的聊天网页大小，软件侧栏保持原来的尺寸。</p><div class="cache-setting-row"><span>清理超过6个月的翻译缓存数据<small>翻译缓存仅在运行期间保存，退出软件后自动清空。</small></span><button type="button" id="clear-translation-cache" class="primary-btn small">清理</button></div><div class="cache-setting-row"><span>清理客户端网页缓存<small>保留登录状态、账号、知识库和本地聊天备份。</small></span><button type="button" id="clear-client-cache" class="primary-btn small">清理</button></div><p id="system-status" role="status" class="hub-muted" data-i18n-skip></p></section><section id="settings-platforms" hidden><h3>平台设置</h3><p class="hub-muted">自定义左栏平台显示，拖动卡片可调整顺序。已添加的账号和登录数据会保留。</p><div id="platform-settings-grid" data-i18n-skip></div></section>
+    <section id="settings-backup" hidden><div class="backup-actions"><button type="button" id="backup-folder" class="ghost-btn small">选择备份文件夹</button><button type="button" id="backup-view" class="primary-btn small">查看备份对话</button><button type="button" id="backup-file" class="ghost-btn small">打开账号备份文件</button><button type="button" id="backup-open" class="link-btn">打开备份文件夹</button></div><p id="backup-path" class="hub-notice" data-i18n-skip></p><label class="app-setting-row"><span>启用本地聊天归档</span><input type="checkbox" id="backup-enabled"></label><label class="app-setting-row"><span>每小时自动备份</span><input type="checkbox" id="backup-auto"></label><p class="hub-muted">软件运行时执行；新增内容持续归档，每小时扫描可读取历史并更新本地浏览记录。附件按内容去重，不重复复制同一文件。</p><div class="backup-actions"><button type="button" id="backup-now" class="primary-btn small">立即备份</button><button type="button" id="backup-retry" class="ghost-btn small">补存未完成对话</button><button type="button" id="backup-stop" class="ghost-btn small" hidden>停止扫描</button></div><p id="backup-progress" role="status" class="hub-notice" data-i18n-skip></p><div id="backup-counts" data-i18n-skip></div><p id="backup-scan-summary" class="hub-muted" data-i18n-skip></p><p id="backup-last" class="hub-muted" data-i18n-skip></p><p class="hub-muted">每个账号一个 .blackcat 文件，包含该账号全部已备份的客户对话、消息和附件，可在黑猫中打开查看。</p><div id="backup-bundles" data-i18n-skip></div><p class="hub-muted">备份范围：软件实际读取到的记录和可下载附件。未加载的旧历史、网页预览图、未下载的原始视频不能保证完整；请补充平台官方导出的历史文件夹。</p><h3>补充官方历史导出</h3><div id="backup-accounts"></div></section>
+  </dialog>
+
+  <script src="i18n.js"></script>
+  <script src="app.js"></script>
+  <script src="../message-alerts.js"></script>
+  <script src="message-alerts.js"></script>
+  <script src="notes.js"></script>
+  <script src="../recipient-address.js"></script>
+  <script src="contacts.js"></script>
+  <script src="bulk.js"></script>
+  <script src="hub.js"></script>
+  <script src="conversation-recipients.js"></script>
+  <script src="backup.js"></script>
+  <script src="backup-viewer.js"></script>
+  <script src="system-settings.js"></script>
+  <script src="assistant-operations.js"></script>
+  <script src="assistant.js"></script>
+  <script src="license-ui.js"></script>
+  <script src="update-ui.js"></script>
+</body>
+</html>
+
+
+
+
+

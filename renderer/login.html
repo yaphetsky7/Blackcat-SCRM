@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; img-src 'self' data:">
+  <title>黑猫SCRM</title>
+  <link rel="stylesheet" href="login.css">
+</head>
+<body>
+  <main class="login">
+    <form id="login-form" class="card" autocomplete="on">
+      <img src="blackcat.svg" alt="" class="logo">
+      <h1>黑猫SCRM</h1>
+      <p class="sub" data-en="Sign in with the account you were given">请使用开通的账号登录</p>
+      <p id="reason" class="notice" role="status" hidden></p>
+      <label><span data-en="Username">用户名</span><input id="username" autocomplete="username" required></label>
+      <label><span data-en="Password">密码</span><input id="password" type="password" autocomplete="current-password" required></label>
+      <details id="server-box">
+        <summary data-en="Server">服务器</summary>
+        <label><span data-en="Server address">服务器地址</span><input id="server" type="url" placeholder="https://"></label>
+      </details>
+      <button id="submit" type="submit" data-en="Sign in">登录</button>
+      <p id="error" class="error" role="alert"></p>
+      <p class="hint" data-en="No account? Contact customer service to subscribe.">没有账号？请联系客服开通配套。</p>
+    </form>
+  </main>
+  <script src="login.js"></script>
+</body>
+</html>
