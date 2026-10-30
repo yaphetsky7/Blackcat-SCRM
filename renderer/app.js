@@ -26,7 +26,8 @@ const PLATFORMS = {
     login: { out: 'input[name="pass"], input[name="email"], input[name="approvals_code"]', outPath: '^/(login|checkpoint|recover)', fallbackIn: true },
   },
   tiktok:{label:'TikTok Messenger',url:'https://www.tiktok.com/messages/',nativeOnly:true,icon:'<svg viewBox="0 0 32 32"><rect width="32" height="32" rx="16" fill="#101117"/><path fill="#25f4ee" d="M19 6h4c.4 3 2 4 5 4v4c-2 0-4-.7-5-1.8V22a7 7 0 1 1-7-7v4a3 3 0 1 0 3 3z"/><path fill="#fff" d="M18 5h4c.4 3 2 4 5 4v4c-2 0-4-.7-5-1.8V21a7 7 0 1 1-7-7v4a3 3 0 1 0 3 3z"/></svg>',login:{out:'input[type="password"]',outPath:'^/login',nativeOnly:true}},
-  wechat:{label:'WeChat',url:'https://web.wechat.com/',nativeOnly:true,icon:'<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#07c160"/><path fill="#fff" d="M13 7C7.5 7 4 10 4 14c0 2.2 1.2 4.2 3.2 5.5l-.8 3 3.3-1.7c.8.2 1.7.3 2.7.3-.7-1-1-2.2-1-3.5 0-4.1 3.7-7.4 8.5-7.4C18.4 8.2 16 7 13 7z"/><path fill="#fff" d="M21 12c-4.4 0-7.5 2.5-7.5 5.8s3.1 5.8 7.5 5.8c.8 0 1.6-.1 2.4-.3l2.7 1.5-.7-2.5c1.6-1.1 2.6-2.7 2.6-4.5 0-3.3-2.9-5.8-7-5.8z"/><g fill="#07c160"><circle cx="10" cy="12" r="1.2"/><circle cx="16" cy="12" r="1.2"/><circle cx="18.5" cy="16.5" r="1"/><circle cx="23.5" cy="16.5" r="1"/></g></svg>',login:{out:'.qrcode img,img.qrcode,#qrcode',nativeOnly:true}},
+  zalo:{label:'Zalo',url:'https://chat.zalo.me/',nativeOnly:true,icon:'<svg viewBox="0 0 32 32"><rect width="32" height="32" rx="9" fill="#0068ff"/><path fill="#fff" d="M9 10.5h10.6v2.3l-7.2 8.2h7.4V23.5H8.6v-2.3l7.2-8.2H9z"/><circle cx="23" cy="21.6" r="2" fill="#fff"/></svg>'},
+  x:{label:'X',url:'https://x.com/messages',nativeOnly:true,icon:'<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#000"/><path fill="#fff" d="M9 8.5h4.6l3.7 5.2 4.4-5.2h2.1l-5.6 6.6 6.8 9.4h-4.6l-4-5.6-4.8 5.6H9.5l6-7z"/><path fill="#000" d="M11.6 9.8l9.5 13.4h1.3L12.9 9.8z"/></svg>'},
 };
 
 const ICONS = {

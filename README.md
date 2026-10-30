@@ -2,13 +2,13 @@
 
 <h1 align="center">黑猫SCRM</h1>
 
-<p align="center">多平台聊天与客户管理 · Multi-account customer chat for WhatsApp, Telegram, LINE and Facebook</p>
+<p align="center">多平台聊天与客户管理 · Multi-account customer chat for WhatsApp, Telegram, LINE, Facebook, Zalo and X</p>
 
 <p align="center"><img src="assets/guide/home.jpg" width="760" alt="黑猫SCRM home screen"></p>
 
 黑猫SCRM is a Windows desktop app for teams that serve customers on many messaging accounts at once. Every account runs in its own isolated session inside one window, with AI and sales tools built around the chats.
 
-黑猫SCRM 是一个 Windows 桌面软件：在一个窗口里同时登录、管理多个 WhatsApp、Telegram、LINE、Facebook 账号，每个账号互相隔离，并提供 AI 与销售工具。
+黑猫SCRM 是一个 Windows 桌面软件：在一个窗口里同时登录、管理多个 WhatsApp、Telegram、LINE、Facebook、Zalo、X 账号，每个账号互相隔离，并提供 AI 与销售工具。
 
 ## Features · 功能
 

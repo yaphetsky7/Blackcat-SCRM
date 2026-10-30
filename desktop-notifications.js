@@ -8,7 +8,7 @@ function nameForWindows(app){
   const key='HKCU\\Software\\Classes\\AppUserModelId\\'+APP_ID(app),reg=(v,d)=>require('child_process').execFile('reg',['add',key,'/v',v,'/t','REG_SZ','/d',d,'/f'],{windowsHide:true},()=>{});
   reg('DisplayName',app.isPackaged?'黑猫SCRM':'黑猫SCRM（本地版）');reg('IconUri',icon);}catch{}
 }
-const POPUP_PLATFORMS={telegram:'Telegram',facebook:'Messenger',line:'LINE',tiktok:'TikTok',wechat:'微信'};
+const POPUP_PLATFORMS={telegram:'Telegram',facebook:'Messenger',line:'LINE',tiktok:'TikTok',zalo:'Zalo',x:'X'};
 function registerDesktopNotifications({app,ipcMain,BrowserWindow,getWindow,getPolicy,loadAccounts,now=Date.now}){
  const last=new Map();
  if(process.platform==='win32'){app.setAppUserModelId(APP_ID(app));nameForWindows(app);}

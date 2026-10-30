@@ -1,8 +1,8 @@
 const fs=require('fs'),path=require('path');
-const PLATFORM_KEYS=['whatsapp','telegram','line','facebook','tiktok','wechat'];
+const PLATFORM_KEYS=['whatsapp','telegram','line','facebook','tiktok','zalo','x'];
 // Message sounds: classic is assets/message-chime.wav, the others are assets/sounds/<key>.wav
 const TONES=['classic','dingdong','bell','drop','marimba','pop','soft','double','rise'];
-const defaults=()=>({messageTone:'classic',accountTones:{},notifications:true,notificationSound:true,notificationPreview:true,accountSounds:{},zoom:1,platforms:{whatsapp:true,telegram:true,line:true,facebook:true,tiktok:false,wechat:false},platformOrder:[...PLATFORM_KEYS]});
+const defaults=()=>({messageTone:'classic',accountTones:{},notifications:true,notificationSound:true,notificationPreview:true,accountSounds:{},zoom:1,platforms:{whatsapp:true,telegram:true,line:true,facebook:true,tiktok:false,zalo:true,x:true},platformOrder:[...PLATFORM_KEYS]});
 function normalize(input={}){const base=defaults();return{messageTone:TONES.includes(input.messageTone)?input.messageTone:'classic',accountTones:Object.fromEntries(Object.entries(input.accountTones||{}).filter(([id,value])=>id&&TONES.includes(value))),notifications:input.notifications!==false,notificationSound:input.notificationSound!==false,notificationPreview:input.notificationPreview!==false,accountSounds:Object.fromEntries(Object.entries(input.accountSounds||{}).filter(([id,value])=>id&&typeof value==='boolean')),zoom:[.75,.9,1,1.1,1.25,1.5].includes(input.zoom)?input.zoom:1,platforms:Object.fromEntries(PLATFORM_KEYS.map(k=>[k,typeof input.platforms?.[k]==='boolean'?input.platforms[k]:base.platforms[k]])),platformOrder:[...new Set([...(Array.isArray(input.platformOrder)?input.platformOrder:[]),...PLATFORM_KEYS])].filter(k=>PLATFORM_KEYS.includes(k))};}
 function registerAppSystem({app,ipcMain,session,getWindow,managedGuests,loadAccounts,clearTranslationCache}){
   const file=path.join(app.getPath('userData'),'system-preferences.json');let prefs=defaults();try{prefs=normalize(JSON.parse(fs.readFileSync(file)));}catch{}

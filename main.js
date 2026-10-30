@@ -233,7 +233,8 @@ const APP_DOMAINS = [
   'telegram.org', 't.me',
   'line.me', 'naver.jp',
   'tiktok.com', 'tiktokv.com', 'tiktokcdn.com',
-  'wechat.com', 'weixin.qq.com', 'wx.qq.com', 'wx2.qq.com', 'wx8.qq.com',
+  'zalo.me', 'zaloapp.com', 'zadn.vn', 'zdn.vn', 'zalo.vn',
+  'x.com', 'twitter.com', 'twimg.com', 't.co', 'x.ai',
 ];
 
 function isAppUrl(url) {
