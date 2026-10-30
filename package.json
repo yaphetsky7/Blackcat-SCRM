@@ -1,7 +1,7 @@
 {
   "name": "blackcat-crm",
   "productName": "黑猫SCRM",
-  "version": "1.14.2",
+  "version": "1.14.3",
   "description": "黑猫SCRM 多平台聊天与客户管理",
   "main": "main.js",
   "blackcatServer": "https://sky.tail75b558.ts.net",
