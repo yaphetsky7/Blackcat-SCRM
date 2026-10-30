@@ -9,22 +9,22 @@ function nameForWindows(app){
   reg('DisplayName',app.isPackaged?'黑猫SCRM':'黑猫SCRM（本地版）');reg('IconUri',icon);}catch{}
 }
 const POPUP_PLATFORMS={telegram:'Telegram',facebook:'Messenger',line:'LINE',tiktok:'TikTok',wechat:'微信'};
-function registerDesktopNotifications({app,ipcMain,Notification,getWindow,getPolicy,loadAccounts,now=Date.now}){
- const last=new Map(),open=new Set();
+function registerDesktopNotifications({app,ipcMain,BrowserWindow,getWindow,getPolicy,loadAccounts,now=Date.now}){
+ const last=new Map();
  if(process.platform==='win32'){app.setAppUserModelId(APP_ID(app));nameForWindows(app);}
- ipcMain.handle('messages:notify',(e,r={})=>{
+ const openAccount=id=>{const w=getWindow();if(!w||w.isDestroyed())return;if(w.isMinimized())w.restore();w.show();w.focus();w.webContents.send('messages:open-account',id);};
+ const popups=require('./notification-popups').createPopups({BrowserWindow,ipcMain,onClick:openAccount});
+ ipcMain.handle('messages:notify',async(e,r={})=>{
   if(e.sender!==getWindow()?.webContents)return{ok:false};
   // WhatsApp Web shows its own notifications; the other platforms' pages don't, so the app pops up for them
   const account=loadAccounts().find(a=>a.id===r.accountId&&POPUP_PLATFORMS[a.platform]);
-  if(!account||getPolicy().notifications===false||!Notification.isSupported())return{ok:true,data:false};
-  if(now()-(last.get(account.id)??-Infinity)<1000)return{ok:true,data:false};last.set(account.id,now());
+  if(!account||getPolicy().notifications===false)return{ok:true,data:false};
+  if(now()-(last.get(account.id)??-Infinity)<300)return{ok:true,data:false};last.set(account.id,now());
   // Message previews only when the user keeps 提示显示消息内容 on; never attachment URLs
-  const clip=(v,n)=>String(v||'').replace(/\s+/g,' ').trim().slice(0,n),text=getPolicy().notificationPreview!==false?clip(r.text,200):'',from=clip(r.from,60);
-  const n=new Notification({title:text?(from?from+' · ':'')+account.name:'黑猫SCRM · '+account.name,body:text||POPUP_PLATFORMS[account.platform]+' 收到新消息 / New '+POPUP_PLATFORMS[account.platform]+' message',icon:require('path').join(__dirname,'assets/blackcat.ico'),silent:true});open.add(n);
-  n.once('close',()=>open.delete(n));n.once('click',()=>{const w=getWindow();if(!w||w.isDestroyed())return;if(w.isMinimized())w.restore();w.show();w.focus();w.webContents.send('messages:open-account',account.id);});// At most 3 popups on screen: the oldest makes room for the newest
-  while(open.size>3){const oldest=open.values().next().value;open.delete(oldest);oldest.close();}
-  n.show();return{ok:true,data:true};
+  const clip=(v,n)=>String(v||'').replace(/\s+/g,' ').trim().slice(0,n),text=getPolicy().notificationPreview!==false?clip(r.text,200):'',from=clip(r.from,60),label=POPUP_PLATFORMS[account.platform];
+  await popups.show({accountId:account.id,source:'黑猫SCRM · '+label,title:text?(from?from+' · ':'')+account.name:account.name,body:text||label+' 收到新消息 / New '+label+' message'});
+  return{ok:true,data:true};
  });
- app.on('before-quit',()=>{for(const n of open)n.close();open.clear();});
+ app.on('before-quit',()=>popups.close());
 }
 module.exports={registerDesktopNotifications,APP_ID};

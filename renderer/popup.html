@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'">
+  <title>黑猫SCRM</title>
+  <style>
+    :root { --card: #ffffff; --text: #1d2129; --muted: #5f6673; --line: rgba(0, 0, 0, .08); --hover: #f3f5f9; }
+    @media (prefers-color-scheme: dark) { :root { --card: #2b303b; --text: #eef0f4; --muted: #aab0bc; --line: rgba(255, 255, 255, .1); --hover: #343a47; } }
+    html, body { margin: 0; background: transparent; font: 13px/1.45 "Segoe UI", "Microsoft YaHei", sans-serif; color: var(--text); overflow: hidden; user-select: none; }
+    #stack { display: flex; flex-direction: column; gap: 8px; padding: 6px; }
+    .card { position: relative; display: grid; grid-template-columns: 40px 1fr; gap: 10px; padding: 12px 34px 12px 12px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 18px rgba(0, 0, 0, .18); cursor: pointer; animation: in .18s ease-out; }
+    .card:hover { background: var(--hover); }
+    .card img { width: 40px; height: 40px; border-radius: 8px; }
+    .source { font-size: 11px; color: var(--muted); }
+    .title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .body { color: var(--muted); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+    .close { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 16px; line-height: 1; cursor: pointer; }
+    .close:hover { background: var(--line); color: var(--text); }
+    @keyframes in { from { opacity: 0; transform: translateY(8px); } }
+  </style>
+</head>
+<body>
+  <div id="stack"></div>
+  <script src="popup.js"></script>
+</body>
+</html>

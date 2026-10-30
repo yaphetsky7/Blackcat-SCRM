@@ -36,6 +36,8 @@
       "app-system.js",
       "app-assistant.js",
       "assistant-engine.js",
+      "notification-popups.js",
+      "popup-preload.js",
       "assistant-actions.js",
       "assistant-labels.js",
       "recipient-address.js",

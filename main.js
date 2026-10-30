@@ -567,7 +567,7 @@ ipcMain.handle('proxy:test', async (_e, proxy) => {
 
 require('./conversation-notes').registerNotes({ app, ipcMain, getWindow: () => win, loadAccounts });
 const appSystem=require('./app-system').registerAppSystem({app,ipcMain,session,getWindow:()=>win,managedGuests,loadAccounts,clearTranslationCache});
-require('./desktop-notifications').registerDesktopNotifications({app,ipcMain,Notification,getWindow:()=>win,getPolicy:()=>appSystem.get(),loadAccounts});
+require('./desktop-notifications').registerDesktopNotifications({app,ipcMain,BrowserWindow,getWindow:()=>win,getPolicy:()=>appSystem.get(),loadAccounts});
 require('./app-assistant').registerAssistant({app,ipcMain,getWindow:()=>win,getKey:()=>claudeAccess().apiKey,getBaseURL:()=>claudeAccess().baseURL,
   getAccount:()=>{const s=license.state();return s.loggedIn?{profile:s.profile,catalog:s.catalog,ownClaudeKey:!!decodeSecret(settings.claudeKey)&&settings.claudeMode!=='points',accountsUsed:loadAccounts().length}:null;}});
 ipcMain.handle('help:guide',async e=>{if(e.sender!==win?.webContents)return{ok:false,error:'无权打开教程'};const error=await shell.openPath(path.join(__dirname,'assets','黑猫SCRM使用教程.pdf'));return error?{ok:false,error}:{ok:true};});
