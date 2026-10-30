@@ -1,6 +1,6 @@
 // Illustrated bilingual tutorial: shared by the PDF builder and the assistant's tutorial cards.
 // Each figure's steps follow the numbered markers drawn on assets/guide/<img>.jpg.
-module.exports = { version: '1.13.0', chapters: [
+module.exports = { version: '1.14.5', chapters: [
 { id: 'start', zh: '安装与第一次使用', en: 'Installation and first launch',
   keywords: /安装|登录|扫码|新建|二维码|第一次|开始|install|login|log in|sign in|qr|first|start|new session/i,
   introZh: '黑猫SCRM 把多个平台的账号放在同一个窗口里。每个账号独立登录，聊天界面仍是各平台的网页版。',
@@ -61,8 +61,8 @@ module.exports = { version: '1.13.0', chapters: [
 
 { id: 'translate', zh: '消息翻译', en: 'Message translation',
   keywords: /翻译|语言|translate|translation|language|claude key|haiku|nepali/i,
-  introZh: '可以分别翻译收到的消息和要发送的消息。翻译路线“系统推荐”：有 Claude Key 时用 Claude Haiku，失败再用 Google。',
-  introEn: 'Incoming and outgoing messages are translated separately. The "Recommended" provider uses Claude Haiku when a Claude key is set and falls back to Google.',
+  introZh: '可以分别翻译收到的消息和要发送的消息，支持 65 种语言（含粤语、马来语、泰米尔语、印尼语、泰语、越南语、尼泊尔语等）。翻译路线“系统推荐”：有 Claude Key 时用 Claude Haiku，失败再用 Google。',
+  introEn: 'Incoming and outgoing messages are translated separately, in 65 languages (including Cantonese, Malay, Tamil, Indonesian, Thai, Vietnamese and Nepali). The "Recommended" provider uses Claude Haiku when a Claude key is set and falls back to Google.',
   figures: [
     { img: 'translate', zh: '翻译设置', en: 'Translation settings', steps: [
       ['点击右侧“翻译设置”。', 'Click "Translation" on the right bar.'],
@@ -239,8 +239,9 @@ module.exports = { version: '1.13.0', chapters: [
     ] },
     { img: 'settings-system', zh: '系统设置', en: 'System settings', steps: [
       ['系统设置。', 'System settings.'],
-      ['系统消息提示：Windows 弹窗通知。', 'System notifications: Windows pop-up alerts.'],
+      ['系统消息提示：新消息和回应在屏幕右下角弹出提示，最多 3 个叠放，最新的在上面，7 秒后消失；点一下打开该账号。（WhatsApp 使用它自己的 Windows 通知。）', 'System notifications: new messages and reactions pop up at the bottom right, up to 3 stacked with the newest on top, fading after 7 s; click one to open that account. (WhatsApp uses its own Windows notifications.)'],
       ['系统消息提示声音：新消息铃声总开关。', 'Notification sounds: the master switch for message sounds.'],
+      ['提示显示消息内容：弹窗显示发送者和消息开头；关闭后只显示“收到新消息”。锁屏时也会显示，注意隐私。', 'Show message preview: popups show the sender and the start of the message; when off they only say "New message". Previews also show on the lock screen.'],
       ['页面缩放。', 'Page zoom.'],
     ] },
     { img: 'settings-platforms', zh: '平台设置', en: 'Platforms', steps: [
@@ -251,18 +252,19 @@ module.exports = { version: '1.13.0', chapters: [
       ['选择备份文件夹。', 'Choose a backup folder.'],
       ['启用本地聊天归档。', 'Enable the local chat archive.'],
       ['每小时自动备份。', 'Back up every hour.'],
+      ['停止操作多久后才备份（1–30 分钟）：自动备份等你停止操作满这段时间才开始。', 'Back up after you stop for (1–30 min): automatic backups wait until you have been idle that long.'],
       ['立即备份。', 'Back up now.'],
       ['查看备份对话：按账号和客户浏览、搜索。', 'View backed-up chats: browse and search by account and customer.'],
       ['打开账号备份文件（.blackcat），在新电脑上查看。', 'Open an account backup file (.blackcat) to view it on a new computer.'],
     ] },
   ],
-  tipZh: '备份只包含软件实际读取到的记录和已下载的附件。重要资料请同时保留平台官方导出，并把 .blackcat 文件复制到另一块硬盘。',
-  tipEn: 'Backups include only what the app could read and attachments that were downloaded. Keep the platform\'s official export too, and copy .blackcat files to another drive.' },
+  tipZh: '有未读消息的对话会先跳过，等你看过后下一轮再备份，客户那边不会出现你没看过的“已读”。备份只包含软件实际读取到的记录和已下载的附件。重要资料请同时保留平台官方导出，并把 .blackcat 文件复制到另一块硬盘。',
+  tipEn: 'Chats with unread messages are skipped until you have read them, so customers never see a "read" you did not do. Backups include only what the app could read and attachments that were downloaded. Keep the platform\'s official export too, and copy .blackcat files to another drive.' },
 
 { id: 'assistant', zh: '黑猫助手', en: 'Black Cat assistant',
   keywords: /助手|黑猫|assistant|helper/i,
-  introZh: '黑猫助手可以回答用法问题，也可以直接帮你修改设置。',
-  introEn: 'The Black Cat assistant answers how-to questions and can change settings for you.',
+  introZh: '黑猫助手可以回答用法问题、直接帮你修改设置，也能读取聊天并建议回复：说“读取当前聊天，建议怎么回复”，它会看懂文字、群组成员和最新的照片，给 2–3 条建议回复卡片；“填入输入框”只放进输入框，由你确认后发送。',
+  introEn: 'The Black Cat assistant answers how-to questions, changes settings for you, and can read a chat and suggest replies: say "Read this chat and suggest replies" and it reads the text, group members and the latest photos, then offers 2–3 reply cards. "Fill in" only puts the text in the typing box; you check it and send.',
   figures: [
     { img: 'assistant', zh: '使用黑猫助手', en: 'Using the assistant', steps: [
       ['点击右下角黑猫打开助手。', 'Click the cat at bottom right to open the assistant.'],
