@@ -33,13 +33,13 @@ function createPopups({ BrowserWindow, ipcMain, onClick }) {
     win.setBounds({ x: area.x + area.width - WIDTH - MARGIN, y: area.y + area.height - h - MARGIN, width: WIDTH, height: h });
     if (!win.isVisible()) win.showInactive();
   });
-  ipcMain.on('popup:click', (e, id) => { if (!owner(e)) return; const card = cards.find((c) => c.id === id); remove(id); if (card) onClick(card.accountId); });
+  ipcMain.on('popup:click', (e, id) => { if (!owner(e)) return; const card = cards.find((c) => c.id === id); remove(id); if (card) onClick(card.accountId, card.chat); });
   ipcMain.on('popup:close', (e, id) => { if (owner(e)) remove(id); });
   // Pointer over the stack: keep every card until it leaves
   ipcMain.on('popup:hold', (e, on) => { if (!owner(e)) return; held = on === true; for (const c of cards) held ? clearTimeout(timers.get(c.id)) : expire(c.id); });
 
-  async function show({ accountId, title, body, source }) {
-    const card = { id: ++seq, accountId, title: String(title || '').slice(0, 120), body: String(body || '').slice(0, 300), source: String(source || ''), at: Date.now() };
+  async function show({ accountId, chat, title, body, source }) {
+    const card = { id: ++seq, accountId, chat: String(chat || ''), title: String(title || '').slice(0, 120), body: String(body || '').slice(0, 300), source: String(source || ''), at: Date.now() };
     cards = [card, ...cards];
     for (const old of cards.slice(MAX)) remove(old.id);
     if (!held) expire(card.id);

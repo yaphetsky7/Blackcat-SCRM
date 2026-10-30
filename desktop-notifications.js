@@ -12,7 +12,7 @@ const POPUP_PLATFORMS={telegram:'Telegram',facebook:'Messenger',line:'LINE',tikt
 function registerDesktopNotifications({app,ipcMain,BrowserWindow,getWindow,getPolicy,loadAccounts,now=Date.now}){
  const last=new Map();
  if(process.platform==='win32'){app.setAppUserModelId(APP_ID(app));nameForWindows(app);}
- const openAccount=id=>{const w=getWindow();if(!w||w.isDestroyed())return;if(w.isMinimized())w.restore();w.show();w.focus();w.webContents.send('messages:open-account',id);};
+ const openAccount=(id,chat)=>{const w=getWindow();if(!w||w.isDestroyed())return;if(w.isMinimized())w.restore();w.show();w.focus();w.webContents.send('messages:open-account',id,chat||'');};
  const popups=require('./notification-popups').createPopups({BrowserWindow,ipcMain,onClick:openAccount});
  ipcMain.handle('messages:notify',async(e,r={})=>{
   if(e.sender!==getWindow()?.webContents)return{ok:false};
@@ -22,7 +22,7 @@ function registerDesktopNotifications({app,ipcMain,BrowserWindow,getWindow,getPo
   if(!r.id){if(now()-(last.get(account.id)??-Infinity)<300)return{ok:true,data:false};last.set(account.id,now());}
   // Message previews only when the user keeps 提示显示消息内容 on; never attachment URLs
   const clip=(v,n)=>String(v||'').replace(/\s+/g,' ').trim().slice(0,n),text=getPolicy().notificationPreview!==false?clip(r.text,200):'',from=clip(r.from,60),label=POPUP_PLATFORMS[account.platform];
-  await popups.show({accountId:account.id,source:'黑猫SCRM · '+label,title:text?(from?from+' · ':'')+account.name:account.name,body:text||label+' 收到新消息 / New '+label+' message'});
+  await popups.show({accountId:account.id,chat:String(r.chat||'').slice(0,40),source:'黑猫SCRM · '+label,title:text?(from?from+' · ':'')+account.name:account.name,body:text||label+' 收到新消息 / New '+label+' message'});
   return{ok:true,data:true};
  });
  app.on('before-quit',()=>popups.close());

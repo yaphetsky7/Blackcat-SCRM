@@ -70,7 +70,7 @@ contextBridge.exposeInMainWorld('api', {
   noteFlush: (request) => ipcRenderer.sendSync('notes:flush', request),
   openUserGuide:()=>ipcRenderer.invoke('help:guide'),
   messageNotify: request=>ipcRenderer.invoke('messages:notify',request),
-  onMessageNotificationOpen: fn=>{const listener=(_e,id)=>fn(id);ipcRenderer.on('messages:open-account',listener);return()=>ipcRenderer.removeListener('messages:open-account',listener);},
+  onMessageNotificationOpen: fn=>{const listener=(_e,id,chat)=>fn(id,chat);ipcRenderer.on('messages:open-account',listener);return()=>ipcRenderer.removeListener('messages:open-account',listener);},
   backupState: () => ipcRenderer.invoke('backup:state'),
   backupRecent: (accountId, chatKey, skip, limit) => ipcRenderer.invoke('backup:recent', { accountId, chatKey, skip, limit }),
   backupFolder: () => ipcRenderer.invoke('backup:folder'),
