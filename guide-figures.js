@@ -25,6 +25,8 @@ module.exports = { version: '1.14.6', chapters: [
       ['Telegram：扫码或用手机号登录。', 'Telegram: scan the QR code or sign in with your phone number.'],
       ['LINE：使用官方 LINE 扩展登录（首次会自动下载）。', 'LINE: signs in through the official LINE extension (downloaded automatically the first time).'],
       ['Messenger：登录 Facebook 后直接进入 Messenger 消息页。', 'Messenger: sign in to Facebook and the Messenger chat page opens directly.'],
+      ['Zalo：打开 Zalo 网页版，用手机 Zalo 扫码登录。目前提供原生网页、未读数和弹窗提示。', 'Zalo: opens Zalo Web; scan the QR code with Zalo on your phone. Native web page, unread counts and popups for now.'],
+      ['X：打开 X 私信页，用手机号、邮箱或用户名加密码登录（Google / Apple 登录在软件内无法使用）。目前提供原生网页、未读数和弹窗提示。', 'X: opens X messages; sign in with phone, email or username and password (Google / Apple sign-in does not work inside the app). Native web page, unread counts and popups for now.'],
     ] },
     { img: 'wa-login', zh: '扫码登录与账号操作', en: 'Sign in and account actions', steps: [
       ['选中的账号会高亮，右边显示该平台的登录页，用手机扫码。', 'The selected account is highlighted and its sign-in page shows on the right. Scan it with your phone.'],
