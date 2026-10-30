@@ -18,7 +18,8 @@ function card(item) {
 
 window.popup.onCards((cards) => {
   stack.replaceChildren(...cards.map(card));
-  requestAnimationFrame(() => window.popup.size(stack.getBoundingClientRect().height));
+  // Measure right away: a hidden window gets no animation frames, so waiting for one would keep it hidden
+  window.popup.size(stack.getBoundingClientRect().height);
 });
 document.addEventListener('mouseenter', () => window.popup.hold(true));
 document.addEventListener('mouseleave', () => window.popup.hold(false));
