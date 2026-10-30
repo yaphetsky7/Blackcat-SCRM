@@ -1184,6 +1184,21 @@ function installInboxBridge(deps) {
     }
     return null;
   }
+  // Telegram Web A now scrambles its class names. Its chat badges sit in .chat-badge-transition: a number pill
+  // (green = unread, grey = muted chat), or a pin / @mention icon. Muted chats count as 0, like Telegram's own total.
+  function telegramBadge(row) {
+    const box = row.querySelector('.chat-badge-transition');
+    if (!box) return null;
+    let unread = 0, muted = false;
+    for (const el of box.querySelectorAll('span, div')) {
+      const m = (el.childElementCount ? '' : el.textContent.trim()).match(/^(\d+(?:[.,]\d+)?)\s*([KkMm])?$/);
+      if (!m) continue;
+      unread = Math.min(9999, Math.round(Number(m[1].replace(',', '.')) * (m[2] ? (/k/i.test(m[2]) ? 1e3 : 1e6) : 1)));
+      const [r, g, b, alpha = 1] = (getComputedStyle(el.closest('.chat-badge-transition div') || el).backgroundColor.match(/[\d.]+/g) || []).map(Number);
+      muted = Number.isFinite(r) && alpha > 0 && Math.max(r, g, b) - Math.min(r, g, b) < 30;
+    }
+    return { unread: unread || (box.querySelector('.icon-mention') ? 1 : 0), muted };
+  }
   function conversationRows(allRows = false) {
     const p = platform();
     if (!p) return [];
@@ -1212,7 +1227,8 @@ function installInboxBridge(deps) {
       const messageStamp = plain(row.querySelector('.LastMessageMeta .time, time'));
       const badge = row.querySelector('[aria-label*="unread" i], [aria-label*="未读"], [class*="unread" i], .badge, [data-unread-count]');
       const unreadText = badge?.getAttribute('data-unread-count') || badge?.getAttribute('aria-label') || plain(badge);
-      const unread = badge ? Math.min(9999, Number((unreadText?.match(/\d+/) || [])[0]) || 1) : 0;
+      const tg = p === 'telegram' && !badge ? telegramBadge(row) : null;
+      const unread = tg ? (tg.muted ? 0 : tg.unread) : badge ? Math.min(9999, Number((unreadText?.match(/\d+/) || [])[0]) || 1) : 0;
       const ref = { key: String(key).slice(0, 400), title, href: href.slice(0, 1000), dataId: dataId.slice(0, 400), privateChat: privateType(row, String(key)) };
       rowNodes.set(ref.key, row);
       result.push({ ...ref, preview, messageStamp, unread, updatedAt: Date.now() });

@@ -8,16 +8,18 @@ function nameForWindows(app){
   const key='HKCU\\Software\\Classes\\AppUserModelId\\'+APP_ID(app),reg=(v,d)=>require('child_process').execFile('reg',['add',key,'/v',v,'/t','REG_SZ','/d',d,'/f'],{windowsHide:true},()=>{});
   reg('DisplayName',app.isPackaged?'黑猫SCRM':'黑猫SCRM（本地版）');reg('IconUri',icon);}catch{}
 }
+const POPUP_PLATFORMS={telegram:'Telegram',facebook:'Messenger',line:'LINE',tiktok:'TikTok',wechat:'微信'};
 function registerDesktopNotifications({app,ipcMain,Notification,getWindow,getPolicy,loadAccounts,now=Date.now}){
  const last=new Map(),open=new Set();
  if(process.platform==='win32'){app.setAppUserModelId(APP_ID(app));nameForWindows(app);}
  ipcMain.handle('messages:notify',(e,r={})=>{
   if(e.sender!==getWindow()?.webContents)return{ok:false};
-  const account=loadAccounts().find(a=>a.id===r.accountId&&a.platform==='telegram');
+  // WhatsApp Web shows its own notifications; the other platforms' pages don't, so the app pops up for them
+  const account=loadAccounts().find(a=>a.id===r.accountId&&POPUP_PLATFORMS[a.platform]);
   if(!account||getPolicy().notifications===false||!Notification.isSupported())return{ok:true,data:false};
   if(now()-(last.get(account.id)??-Infinity)<2500)return{ok:true,data:false};last.set(account.id,now());
   // Do not put customer content or private attachment URLs on the lock screen.
-  const n=new Notification({title:'黑猫SCRM · '+account.name,body:'Telegram 收到新消息 / New Telegram message',icon:require('path').join(__dirname,'assets/blackcat.ico'),silent:true});open.add(n);
+  const n=new Notification({title:'黑猫SCRM · '+account.name,body:POPUP_PLATFORMS[account.platform]+' 收到新消息 / New '+POPUP_PLATFORMS[account.platform]+' message',icon:require('path').join(__dirname,'assets/blackcat.ico'),silent:true});open.add(n);
   n.once('close',()=>open.delete(n));n.once('click',()=>{const w=getWindow();if(!w||w.isDestroyed())return;if(w.isMinimized())w.restore();w.show();w.focus();w.webContents.send('messages:open-account',account.id);});n.show();return{ok:true,data:true};
  });
  app.on('before-quit',()=>{for(const n of open)n.close();open.clear();});
