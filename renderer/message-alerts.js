@@ -3,11 +3,16 @@
  let audio=null,playingAccount=null,failed=false;
  function stop(){audio?.pause();if(audio)audio.currentTime=0;playingAccount=null;}
  async function play(id,preview=false){try{stop();audio||=new Audio('../assets/message-chime.wav');audio.volume=.7;playingAccount=id;await audio.play();failed=false;if(preview)$('account-sound-status').textContent=t('正在播放试听铃声');return true;}catch{if(preview||!failed){if(!$('settings').hidden)$('account-sound-status').textContent=t('铃声播放失败，请检查 Windows 音量设置');else toast(t('铃声播放失败，请检查 Windows 音量设置'),true);}failed=true;return false;}}
- const core=BlackCatMessageAlerts.create({getPolicy:()=>window.systemPreferences||{},isOnline:id=>['in','web'].includes(status[id]),onCount:(id,n)=>{if(!findAcc(id))return;unread[id]=n;renderBadges();},play:id=>play(id),onNotify:id=>{const p=findAcc(id)?.platform;if(p&&p!=='whatsapp')window.api.messageNotify?.({accountId:id}).catch(()=>{});}});
+ const core=BlackCatMessageAlerts.create({getPolicy:()=>window.systemPreferences||{},isOnline:id=>['in','web'].includes(status[id]),onCount:(id,n)=>{if(!findAcc(id))return;unread[id]=n;renderBadges();},play:id=>play(id),onNotify:id=>{const p=findAcc(id)?.platform;if(!p||p==='whatsapp')return;
+  // Give the chat list a moment to show the new message, then use the chat whose preview changed last
+  setTimeout(()=>{const c=changed.get(id),fresh=c&&Date.now()-c.at<20000,show=fresh&&window.systemPreferences?.notificationPreview!==false;window.api.messageNotify?.({accountId:id,...(show?{from:c.title,text:c.preview}:{})}).catch(()=>{});},1500);}});
+ // Chat-list rows seen in each account's last snapshot, and the latest row whose preview or unread count went up
+ const lastRows=new Map(),changed=new Map();
+ function track(id,data){const rows=data?.conversations;if(!Array.isArray(rows))return;const before=lastRows.get(id);if(before)for(const row of rows){const old=before.get(row.key);if(old&&row.preview&&(row.preview!==old.preview||row.unread>old.unread))changed.set(id,{title:String(row.title||''),preview:String(row.preview),at:Date.now()});}lastRows.set(id,new Map(rows.map(r=>[r.key,{preview:r.preview,unread:r.unread||0}])));}
  window.api.onMessageNotificationOpen?.(id=>{const acc=findAcc(id);if(acc)activate(id);});
  function sync(){const id=settingsTarget;if(id){$('acc-message-sound').checked=window.systemPreferences?.accountSounds?.[id]!==false;$('acc-message-sound').disabled=false;}if(playingAccount&&(window.systemPreferences?.notificationSound===false||window.systemPreferences?.accountSounds?.[playingAccount]===false))stop();}
  async function set(id,enabled){if(!findAcc(id))throw Error('账号不存在');const r=await window.api.appSystemSet({accountSounds:{[id]:enabled}});if(!r.ok)throw Error(r.error);window.systemPreferences=r.data;sync();window.drawSystemSettings?.();return enabled;}
  $('acc-message-sound').addEventListener('change',async()=>{const id=settingsTarget,value=$('acc-message-sound').checked;$('acc-message-sound').disabled=true;try{await set(id,value);if(settingsTarget===id)$('account-sound-status').textContent=t('已保存，立即生效');}catch(e){if(settingsTarget===id)$('account-sound-status').textContent=e.message;sync();}});
  $('acc-sound-preview').addEventListener('click',()=>play(settingsTarget,true));window.api.onSystemChanged?.(value=>{window.systemPreferences=value;sync();});window.systemPreferencesReady?.then(sync);window.addEventListener('blackcat:preferences',sync);
- window.accountMessageAlerts={...core,set,sync,preview:id=>play(id,true)};
+ window.accountMessageAlerts={...core,snapshot(id,data){track(id,data);core.snapshot(id,data);},set,sync,preview:id=>play(id,true)};
 })();

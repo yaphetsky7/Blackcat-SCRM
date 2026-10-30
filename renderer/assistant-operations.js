@@ -129,6 +129,7 @@
   if(c.type==='backup_configure'){const old=(await api('backupState')).data;if(!old.folder)throw Error('请先选择备份文件夹');const r=await api('backupConfigure',d.enabled??old.enabled,d.automatic??old.automatic);await backupController.refresh();return result('备份设置已保存',{enabled:r.data.enabled,automatic:r.data.automatic});}
   if(c.type==='backup_choose_folder'){const r=await api('backupFolder');await backupController.refresh();return result(r.data?'备份文件夹已选择':'已取消选择',{status:r.data?'completed':'cancelled'});}
   if(c.type==='backup_stop'){if(!backupController.getState().running)throw Error('当前没有运行中的备份扫描');document.getElementById('backup-stop').click();return result('已请求停止扫描，已归档内容保留',{status:'stopping'});}
+  if(c.type==='notification_settings'){const map={notifications:'notifications',sound:'notificationSound',preview:'notificationPreview'},patch={};for(const[k,key]of Object.entries(map))if(typeof d[k]==='boolean')patch[key]=d[k];if(!Object.keys(patch).length)throw Error('请说明要开启或关闭哪一项');const r=await api('appSystemSet',patch);window.systemPreferences=r.data;window.drawSystemSettings?.();return result('消息提示设置已保存',{notifications:r.data.notifications,sound:r.data.notificationSound,preview:r.data.notificationPreview});}
   if(c.type==='platform_order'){const r=await api('appSystemSet',{platformOrder:d.order});return result('平台显示顺序已保存',{order:r.data.platformOrder});}
   return null;
  }
