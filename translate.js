@@ -39,7 +39,9 @@ function normLang(code) {
   if (c === 'zh' || c === 'zh-hans' || c === 'zh-cn') return 'zh-cn';
   if (c === 'zh-hant' || c === 'zh-tw' || c === 'zh-hk') return 'zh-tw';
   if (c === 'ne-latn') return 'ne-latn'; // 罗马字尼泊尔语和天城文尼泊尔语要区分
-  return c.split('-')[0];
+  // Google still answers with old codes for some languages (iw = Hebrew, jv/jw = Javanese, nb = Norwegian)
+  const base = c.split('-')[0];
+  return { iw: 'he', jv: 'jw', nb: 'no' }[base] || base;
 }
 
 // 被限流（HTTP 429）时暂停一段时间再试，连续被限流就加长（1 分钟起，最长 15 分钟），成功后恢复。
@@ -65,6 +67,11 @@ const LANGUAGE_NAMES = {
   th: 'Thai', vi: 'Vietnamese', id: 'Indonesian', ms: 'Malay', tl: 'Filipino', hi: 'Hindi', bn: 'Bengali',
   ur: 'Urdu', tr: 'Turkish', fa: 'Persian', he: 'Hebrew', nl: 'Dutch', pl: 'Polish', uk: 'Ukrainian',
   km: 'Khmer', my: 'Burmese', lo: 'Lao',
+  yue: 'Cantonese (written colloquial Cantonese in Traditional Chinese characters, as typed in Hong Kong / Malaysia chats)',
+  ta: 'Tamil', jw: 'Javanese', su: 'Sundanese', ceb: 'Cebuano', pa: 'Punjabi', te: 'Telugu', mr: 'Marathi', gu: 'Gujarati',
+  kn: 'Kannada', ml: 'Malayalam', si: 'Sinhala', ps: 'Pashto', el: 'Greek', cs: 'Czech', ro: 'Romanian', hu: 'Hungarian',
+  sv: 'Swedish', da: 'Danish', no: 'Norwegian', fi: 'Finnish', sk: 'Slovak', bg: 'Bulgarian', sr: 'Serbian', hr: 'Croatian',
+  mn: 'Mongolian', kk: 'Kazakh', uz: 'Uzbek', sw: 'Swahili', am: 'Amharic', ha: 'Hausa', yo: 'Yoruba', zu: 'Zulu', so: 'Somali',
   ne: 'Nepali written in Devanagari script',
   'ne-Latn': 'Roman Nepali (Nepali written in Latin letters, the casual way it is typed in chats, e.g. "tapai lai kasto cha")',
 };
