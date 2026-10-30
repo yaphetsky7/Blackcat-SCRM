@@ -305,7 +305,7 @@ function publicSettings() {
 ipcMain.handle('settings:get', () => publicSettings());
 const fromWindow = (e) => { if (e.sender !== win?.webContents) throw Error('无权访问'); };
 // Backup may scan the account on screen only while the user is away: idle 2+ minutes, or working in another program.
-ipcMain.handle('backup:user-idle', (e) => { fromWindow(e); return require('electron').powerMonitor.getSystemIdleTime() >= 120 || !win?.isFocused(); });
+ipcMain.handle('backup:user-idle', (e) => { fromWindow(e); return require('electron').powerMonitor.getSystemIdleTime() >= (backupService.state().idleMinutes || 2) * 60 || !win?.isFocused(); });
 ipcMain.handle('license:state', (e) => { fromWindow(e); return license.state(); });
 ipcMain.handle('license:refresh', async (e) => { fromWindow(e); return license.refresh(); });
 ipcMain.handle('license:login', async (e, r = {}) => {

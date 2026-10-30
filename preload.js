@@ -74,7 +74,7 @@ contextBridge.exposeInMainWorld('api', {
   backupState: () => ipcRenderer.invoke('backup:state'),
   backupRecent: (accountId, chatKey, skip, limit) => ipcRenderer.invoke('backup:recent', { accountId, chatKey, skip, limit }),
   backupFolder: () => ipcRenderer.invoke('backup:folder'),
-  backupConfigure: (enabled, automatic) => ipcRenderer.invoke('backup:configure', { enabled, automatic }),
+  backupConfigure: (enabled, automatic, idleMinutes) => ipcRenderer.invoke('backup:configure', { enabled, automatic, idleMinutes }),
   backupOpen: () => ipcRenderer.invoke('backup:open'),
   backupReaderOpen: (choose=false) => ipcRenderer.invoke('backup:reader-open',{choose}),
   backupReaderChats: (request) => ipcRenderer.invoke('backup:reader-chats',request),
