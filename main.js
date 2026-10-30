@@ -192,6 +192,8 @@ function createWindow() {
   // The taskbar menu and pins read these instead of the name Windows cached for the app ID (it had kept "Electron")
   if (process.platform === 'win32') win.setAppDetails({ appId: require('./desktop-notifications').APP_ID(app), appIconPath: app.isPackaged ? process.execPath : path.join(__dirname, 'assets', 'blackcat.ico'), relaunchCommand: app.isPackaged ? `"${process.execPath}"` : `"${process.execPath}" "${app.getAppPath()}"`, relaunchDisplayName: app.isPackaged ? '黑猫SCRM' : '黑猫SCRM（本地版）' });
   Menu.setApplicationMenu(null);
+  // The hidden popup window would otherwise keep the app running after the main window closes
+  win.on('closed', () => { win = null; app.quit(); });
   const clearAttention = () => { if (!win.isDestroyed()) win.flashFrame(false); };
   win.on('focus', clearAttention);
   win.on('restore', clearAttention);
@@ -585,7 +587,7 @@ ipcMain.on('attention:clear', (event) => {
 });
 
 if (app.requestSingleInstanceLock()) {
-  app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } });
+  app.on('second-instance', () => { if (win && !win.isDestroyed()) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } else if (app.isReady()) createWindow(); });
   app.whenReady().then(createWindow);
 } else app.quit();
 
