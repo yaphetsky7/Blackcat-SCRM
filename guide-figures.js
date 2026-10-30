@@ -14,12 +14,6 @@ module.exports = { version: '1.14.6', chapters: [
       ['左下角齿轮是软件设置（语言、API Key、通知、平台、备份）。', 'The gear at bottom left opens app settings (language, API key, notifications, platforms, backup).'],
       ['右下角黑猫是“黑猫助手”，可以问用法或让它帮你操作。', 'The cat at bottom right is the Black Cat assistant. Ask it how-to questions or let it make changes.'],
     ] },
-    { img: 'settings-apikey', zh: '第一次使用：填写 Claude API Key', en: 'First launch: add your Claude API key', steps: [
-      ['点击左下角齿轮打开设置（不需要先新建账号），选择“API Key”。', 'Click the gear at bottom left to open Settings (no account needed first) and choose "API Key".'],
-      ['粘贴你的 Claude API Key（sk-ant- 开头）。', 'Paste your Claude API key (it starts with sk-ant-).'],
-      ['点击“保存并测试”，下方会显示 Key 是否可用。', 'Click "Save and test". The result shows below whether the key works.'],
-      ['这里显示已保存 Key 的末 4 位。翻译、AI 回复、知识库和黑猫助手都用这个 Key。', 'Shows the last 4 characters of the saved key. Translation, AI replies, knowledge bases and the assistant all use it.'],
-    ] },
     { img: 'new-session', zh: '选择平台', en: 'Choose a platform', steps: [
       ['WhatsApp：用手机 WhatsApp 扫码登录。', 'WhatsApp: scan the QR code with WhatsApp on your phone.'],
       ['Telegram：扫码或用手机号登录。', 'Telegram: scan the QR code or sign in with your phone number.'],
