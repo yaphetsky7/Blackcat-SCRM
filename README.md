@@ -48,6 +48,10 @@ npm run dist       # build the installer into dist/
 
 To publish an update to customers, double-click `推送更新.bat`: it raises the version, builds the installer and publishes it on the license server. See [server/README.md](server/README.md) for running the server.
 
+## Blog · 博客
+
+[阅读黑猫 SCRM 博客](blog/README.md)：多语言客户沟通、AI 客服及客户管理的实用文章，附产品界面图。
+
 ## License
 
 Copyright © 黑猫SCRM. All rights reserved. The source is public to read; it is not open source, and no permission is granted to copy, modify or redistribute it.
