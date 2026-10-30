@@ -206,6 +206,7 @@ function createView(acc) {
   wv.addEventListener('ipc-message', (e) => {
     if (e.channel === 'wam:ready') { wv.dataset.inboxReady = '1'; pushTranslate(acc); }
     if(e.channel==='wam:message-notification')window.accountMessageAlerts?.notification(acc.id);
+    if(e.channel==='wam:page-notification')window.accountMessageAlerts?.page(acc.id,e.args[0]);
     if (e.channel === 'wam:inbox') { window.accountMessageAlerts?.snapshot(acc.id,e.args[0]); window.conversationNotes?.setContext(acc.id, e.args[0]?.conversation || null); window.onInboxSnapshot?.(acc, e.args[0]); }
     if (e.channel === 'wam:inbox-result') window.onInboxResult?.(e.args[0]);
     if (e.channel === 'wam:conversation-changing') window.conversationNotes?.pause(acc.id,e.args[0]);

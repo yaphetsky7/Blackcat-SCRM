@@ -19,7 +19,7 @@ function registerDesktopNotifications({app,ipcMain,BrowserWindow,getWindow,getPo
   // WhatsApp Web shows its own notifications; the other platforms' pages don't, so the app pops up for them
   const account=loadAccounts().find(a=>a.id===r.accountId&&POPUP_PLATFORMS[a.platform]);
   if(!account||getPolicy().notifications===false)return{ok:true,data:false};
-  if(now()-(last.get(account.id)??-Infinity)<300)return{ok:true,data:false};last.set(account.id,now());
+  if(!r.id){if(now()-(last.get(account.id)??-Infinity)<300)return{ok:true,data:false};last.set(account.id,now());}
   // Message previews only when the user keeps 提示显示消息内容 on; never attachment URLs
   const clip=(v,n)=>String(v||'').replace(/\s+/g,' ').trim().slice(0,n),text=getPolicy().notificationPreview!==false?clip(r.text,200):'',from=clip(r.from,60),label=POPUP_PLATFORMS[account.platform];
   await popups.show({accountId:account.id,source:'黑猫SCRM · '+label,title:text?(from?from+' · ':'')+account.name:account.name,body:text||label+' 收到新消息 / New '+label+' message'});
