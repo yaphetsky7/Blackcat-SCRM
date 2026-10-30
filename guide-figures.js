@@ -1,6 +1,6 @@
 // Illustrated bilingual tutorial: shared by the PDF builder and the assistant's tutorial cards.
 // Each figure's steps follow the numbered markers drawn on assets/guide/<img>.jpg.
-module.exports = { version: '1.14.5', chapters: [
+module.exports = { version: '1.14.6', chapters: [
 { id: 'start', zh: '安装与第一次使用', en: 'Installation and first launch',
   keywords: /安装|登录|扫码|新建|二维码|第一次|开始|install|login|log in|sign in|qr|first|start|new session/i,
   introZh: '黑猫SCRM 把多个平台的账号放在同一个窗口里。每个账号独立登录，聊天界面仍是各平台的网页版。',
@@ -42,13 +42,14 @@ module.exports = { version: '1.14.5', chapters: [
 
 { id: 'proxy', zh: '环境设置与代理 IP', en: 'Session settings and proxy IP',
   keywords: /代理|环境|ip|proxy|socks|铃声|名称|改名|rename|sound/i,
-  introZh: '每个账号可以设置独立的代理 IP 和消息铃声。',
-  introEn: 'Each account can have its own proxy IP and message sound.',
+  introZh: '每个账号可以设置独立的代理 IP 和消息铃声；给不同账号选不同铃声，听声音就知道是哪个账号来消息。',
+  introEn: 'Each account can have its own proxy IP and message sound. Give accounts different sounds to tell by ear which one has a new message.',
   figures: [
     { img: 'env', zh: '环境设置', en: 'Session settings', steps: [
       ['点击右侧“环境设置”。', 'Click "Session settings" on the right bar.'],
       ['名称：账号在列表中显示的名字。', 'Name: how the account appears in the list.'],
-      ['消息铃声：单独开关这个账号的新消息提示音，“试听”可预览。', 'Message sound: turn new-message sound on or off for this account. "Preview" plays it.'],
+      ['消息铃声：单独开关这个账号的新消息提示音。', 'Message sound: turn new-message sound on or off for this account.'],
+      ['这个账号的铃声：9 种可选，或“跟随系统设置”；“试听”可预览。', 'This account\'s sound: pick one of 9, or "Same as system setting". "Preview" plays it.'],
       ['打开“代理设置”开关，选择协议（HTTP / SOCKS5）。', 'Turn on "Proxy settings" and pick the protocol (HTTP / SOCKS5).'],
       ['填写主机、端口；有账号密码的代理也一起填写。', 'Enter host and port, plus username and password if the proxy needs them.'],
       ['“检测配置”会测试代理是否可用并显示出口 IP。', '"Test connection" checks the proxy and shows the exit IP.'],
@@ -241,6 +242,7 @@ module.exports = { version: '1.14.5', chapters: [
       ['系统设置。', 'System settings.'],
       ['系统消息提示：新消息和回应在屏幕右下角弹出提示，最多 3 个叠放，最新的在上面，7 秒后消失；点一下打开该账号。（WhatsApp 使用它自己的 Windows 通知。）', 'System notifications: new messages and reactions pop up at the bottom right, up to 3 stacked with the newest on top, fading after 7 s; click one to open that account. (WhatsApp uses its own Windows notifications.)'],
       ['系统消息提示声音：新消息铃声总开关。', 'Notification sounds: the master switch for message sounds.'],
+      ['消息铃声：所有账号默认的铃声，9 种可选（经典、叮咚、铃铛、水滴、木琴、泡泡、柔和、嘀嘀、上扬），点“试听”预览。', 'Message sound: the default sound for all accounts, one of 9 (Classic, Ding-dong, Bell, Drop, Marimba, Pop, Soft, Double beep, Rising). Click "Preview" to hear it.'],
       ['提示显示消息内容：弹窗显示发送者和消息开头；关闭后只显示“收到新消息”。锁屏时也会显示，注意隐私。', 'Show message preview: popups show the sender and the start of the message; when off they only say "New message". Previews also show on the lock screen.'],
       ['页面缩放。', 'Page zoom.'],
     ] },
