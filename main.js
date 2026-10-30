@@ -189,6 +189,8 @@ function createWindow() {
       autoplayPolicy:'no-user-gesture-required',
     },
   });
+  // The taskbar menu and pins read these instead of the name Windows cached for the app ID (it had kept "Electron")
+  if (process.platform === 'win32') win.setAppDetails({ appId: require('./desktop-notifications').APP_ID(app), appIconPath: path.join(__dirname, 'assets', 'blackcat.ico'), relaunchCommand: app.isPackaged ? `"${process.execPath}"` : `"${process.execPath}" "${app.getAppPath()}"`, relaunchDisplayName: app.isPackaged ? '黑猫SCRM' : '黑猫SCRM（本地版）' });
   Menu.setApplicationMenu(null);
   const clearAttention = () => { if (!win.isDestroyed()) win.flashFrame(false); };
   win.on('focus', clearAttention);

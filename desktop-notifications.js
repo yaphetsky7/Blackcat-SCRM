@@ -1,14 +1,16 @@
 // Windows labels toasts with a name it caches per app ID (it had cached "Electron"); registering the ID's
 // DisplayName and icon makes every toast say 黑猫SCRM, with or without a Start Menu shortcut.
+// The source build (npm start) gets its own ID so its electron.exe name never sticks to the installed app
+const APP_ID=app=>app.isPackaged?'local.blackcat-crm':'local.blackcat-crm.dev';
 function nameForWindows(app){
  try{const path=require('path'),fs=require('fs');const icon=path.join(app.getPath('userData'),'notification-icon.png');
   if(!fs.existsSync(icon))fs.copyFileSync(path.join(__dirname,'assets','blackcat.png'),icon);
-  const key='HKCU\\Software\\Classes\\AppUserModelId\\local.blackcat-crm',reg=(v,d)=>require('child_process').execFile('reg',['add',key,'/v',v,'/t','REG_SZ','/d',d,'/f'],{windowsHide:true},()=>{});
-  reg('DisplayName','黑猫SCRM');reg('IconUri',icon);}catch{}
+  const key='HKCU\\Software\\Classes\\AppUserModelId\\'+APP_ID(app),reg=(v,d)=>require('child_process').execFile('reg',['add',key,'/v',v,'/t','REG_SZ','/d',d,'/f'],{windowsHide:true},()=>{});
+  reg('DisplayName',app.isPackaged?'黑猫SCRM':'黑猫SCRM（本地版）');reg('IconUri',icon);}catch{}
 }
 function registerDesktopNotifications({app,ipcMain,Notification,getWindow,getPolicy,loadAccounts,now=Date.now}){
  const last=new Map(),open=new Set();
- if(process.platform==='win32'){app.setAppUserModelId('local.blackcat-crm');nameForWindows(app);}
+ if(process.platform==='win32'){app.setAppUserModelId(APP_ID(app));nameForWindows(app);}
  ipcMain.handle('messages:notify',(e,r={})=>{
   if(e.sender!==getWindow()?.webContents)return{ok:false};
   const account=loadAccounts().find(a=>a.id===r.accountId&&a.platform==='telegram');
@@ -20,4 +22,4 @@ function registerDesktopNotifications({app,ipcMain,Notification,getWindow,getPol
  });
  app.on('before-quit',()=>{for(const n of open)n.close();open.clear();});
 }
-module.exports={registerDesktopNotifications};
+module.exports={registerDesktopNotifications,APP_ID};
