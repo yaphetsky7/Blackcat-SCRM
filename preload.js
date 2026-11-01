@@ -71,6 +71,7 @@ contextBridge.exposeInMainWorld('api', {
   clipList: (request) => ipcRenderer.invoke('clips:list', request),
   clipAdd: (request) => ipcRenderer.invoke('clips:add', request),
   clipRemove: (request) => ipcRenderer.invoke('clips:remove', request),
+  clipUpdate: (request) => ipcRenderer.invoke('clips:update', request),
   clipOpen: (request) => ipcRenderer.invoke('clips:open', request),
   openUserGuide:()=>ipcRenderer.invoke('help:guide'),
   messageNotify: request=>ipcRenderer.invoke('messages:notify',request),

@@ -1591,49 +1591,93 @@ if (location.host === 'web.telegram.org') {
     if (n) ipcRenderer.sendToHost('wam:page-notification', { title: String(n.title).slice(0, 120), body: String(n.body).slice(0, 500), id: String(n.id).slice(0, 80), silent: n.silent === true });
   });
 }
-// "保存到备注": the message or picture under the right-click, with who sent it and when, goes to the app's notes
+// "保存到备注": the message, picture or video under the right-click, with who sent it and when, goes to the app's notes.
+// A message bubble inside the open conversation (never the chat list on the left)
+const MESSAGE_ROOT = '#main [data-id^="true_"], #main [data-id^="false_"], #MiddleColumn .Message, .MessageList .Message, #MiddleColumn [id^="message-"], [role="main"] [role="row"], [data-message-id], [data-mid]';
+const messageAt = (el) => el?.closest?.(MESSAGE_ROOT) || null;
 // Pictures often sit under a transparent overlay, so look through everything at the click point
 const pictureAt = (x, y) => document.elementsFromPoint(x, y).find((el) => /^(IMG|VIDEO)$/.test(el.tagName) && (el.naturalWidth || el.videoWidth || el.width || 0) >= 60 && !el.closest('[class*="avatar" i]'));
+const bigPicture = (root) => [...root.querySelectorAll('img, video')].find((i) => (i.naturalWidth || i.videoWidth || 0) >= 60 && !i.closest('[class*="avatar" i]'));
+// A playable video in the message: WhatsApp / Telegram only load the file once it has been played
+const videoIn = (root, x, y) => document.elementsFromPoint(x, y).find((el) => el.tagName === 'VIDEO') || root.querySelector('video');
+const looksLikeVideo = (root) => !!(root.querySelector('video, [data-icon*="media-play"], [data-icon*="msg-video"], [data-icon*="media-gif"]'));
+// Message text without menus, buttons or icon-font names (Telegram draws its menu inside the message)
+const cleanText = (node) => {
+  const c = node.cloneNode(true);
+  c.querySelectorAll('.wam-tr, .wam-float, .wam-send-hint, script, style, button, svg, i, [role="menu"], [role="menuitem"], [class*="menu" i], [class*="reaction" i]').forEach((n) => n.remove());
+  c.querySelectorAll('img[alt]').forEach((i) => i.replaceWith(i.getAttribute('alt')));
+  return (c.textContent || '').replace(/\bic-[\w-]+/g, ' ').replace(/[ \t]+\n/g, '\n').replace(/[ \t]{2,}/g, ' ').trim();
+};
+const frameOf = (pic) => {
+  const w = pic.naturalWidth || pic.videoWidth, h = pic.naturalHeight || pic.videoHeight;
+  if (!w || !h) return '';
+  const scale = Math.min(1, 1600 / Math.max(w, h)), canvas = document.createElement('canvas');
+  canvas.width = Math.round(w * scale); canvas.height = Math.round(h * scale);
+  canvas.getContext('2d').drawImage(pic, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', 0.9);
+};
 async function captureForNotes(request) {
   try {
-    const at = document.elementFromPoint(Number(request.x) || 0, Number(request.y) || 0);
+    // The chip passes what was under the right-click; by the time it is clicked the page's own menu covers that spot
+    const x = Number(request.x) || 0, y = Number(request.y) || 0, at = request.target || document.elementFromPoint(x, y);
     if (!at) throw new Error('没有找到这条消息');
-    const root = at.closest('#main [data-id^="true_"], #main [data-id^="false_"], .Message, [data-message-id], [data-mid], [role="row"]') || at.parentElement || at;
-    const clean = (node) => { const c = node.cloneNode(true); c.querySelectorAll('.wam-tr, .wam-float, .wam-send-hint, script, style').forEach((n) => n.remove()); c.querySelectorAll('img[alt]').forEach((i) => i.replaceWith(i.getAttribute('alt'))); return (c.textContent || '').replace(/[ \t]+\n/g, '\n').trim(); };
-    const ad = adapter(), parts = ad ? [...root.querySelectorAll(ad.messages)].filter((n) => !ad.skip?.(n)).map(clean).filter(Boolean) : [];
+    // Selected text can be saved from anywhere; otherwise the click must be on a message (an empty stand-in keeps the lookups below simple)
+    if (!request.root && !messageAt(at) && (!request.selection || request.kind !== 'text')) throw new Error('请在打开的对话里右键某条消息');
+    const root = request.root || messageAt(at) || document.createElement('div');
+    const ad = adapter(), parts = ad ? [...root.querySelectorAll(ad.messages)].filter((n) => !ad.skip?.(n)).map(cleanText).filter(Boolean) : [];
     const pre = (root.querySelector('[data-pre-plain-text]')?.getAttribute('data-pre-plain-text') || '').match(/^\[([^\]]*)\]\s*(.*?):\s*$/);
     const author = pre?.[2] || (root.querySelector('.message-title, .sender-title, [data-sender-name]')?.textContent || '').trim();
     const time = pre?.[1] || root.querySelector('time')?.getAttribute('datetime') || (root.querySelector('.message-time, .time')?.textContent || '').trim();
-    let imageData = '';
-    if (request.kind === 'image') {
-      const pic = pictureAt(Number(request.x) || 0, Number(request.y) || 0) || [...root.querySelectorAll('img, video')].find((i) => (i.naturalWidth || i.videoWidth || 0) >= 60);
+    let kind = request.kind;
+    // "保存到备注" on a photo or video without words saves the photo / video itself
+    const media = request.media || (request.root ? null : pictureAt(x, y)) || bigPicture(root);
+    if (kind === 'text' && !request.selection && !parts.length && media) kind = looksLikeVideo(root) ? 'video' : 'image';
+    const out = { kind, text: request.selection || parts.join('\n'), author: author.slice(0, 120), time: String(time).slice(0, 60), imageData: '' };
+    if (kind === 'image') {
+      const pic = media;
       if (!pic) throw new Error('没有找到图片');
-      const w = pic.naturalWidth || pic.videoWidth, h = pic.naturalHeight || pic.videoHeight, scale = Math.min(1, 1600 / Math.max(w, h));
-      const canvas = document.createElement('canvas'); canvas.width = Math.round(w * scale); canvas.height = Math.round(h * scale);
-      canvas.getContext('2d').drawImage(pic, 0, 0, canvas.width, canvas.height);
-      imageData = canvas.toDataURL('image/jpeg', 0.9);
-    }
-    const text = request.selection || parts.join('\n') || (request.kind === 'image' ? '' : clean(root));
-    ipcRenderer.sendToHost('notes:captured', { kind: request.kind === 'image' ? 'image' : 'text', text: text.slice(0, 20000), author: author.slice(0, 120), time: String(time).slice(0, 60), imageData });
-  } catch (error) { ipcRenderer.sendToHost('notes:captured', { error: error.message === 'The operation is insecure.' ? '这张图片无法保存（平台限制）' : error.message }); }
+      out.imageData = frameOf(pic);
+    } else if (kind === 'video') {
+      const video = (request.media?.tagName === 'VIDEO' && request.media) || root.querySelector('video') || videoIn(root, x, y), src = video?.currentSrc || video?.src || '';
+      if (!src || !/^(blob:|https?:)/.test(src)) throw new Error('请先点开播放这段影片，加载后再保存');
+      const response = await fetch(src);
+      if (!response.ok) throw new Error('影片无法读取');
+      const blob = await response.blob();
+      if (blob.size > 200 * 1024 * 1024) throw new Error('影片超过 200 MB，无法保存');
+      out.videoBytes = new Uint8Array(await blob.arrayBuffer()); out.mime = blob.type || 'video/mp4';
+      out.imageData = video.readyState >= 2 ? frameOf(video) : '';
+    } else if (!out.text) out.text = cleanText(root);
+    out.text = out.text.slice(0, 20000);
+    ipcRenderer.sendToHost('notes:captured', out);
+  } catch (error) { ipcRenderer.sendToHost('notes:captured', { error: error.message === 'The operation is insecure.' ? '这个文件无法保存（平台限制）' : error.message }); }
 }
 ipcRenderer.on('notes:capture', (_event, request) => captureForNotes(request));
 // WhatsApp and Telegram replace the right-click menu with their own, so the app's menu never shows. When a page does
-// that, a small "保存到备注" chip appears beside the click as well; the page's own menu keeps working.
+// that on a message, a small "保存到备注" chip appears beside the click as well; the page's own menu keeps working.
 let notesChip = null;
 const hideNotesChip = () => { notesChip?.remove(); notesChip = null; };
 window.addEventListener('contextmenu', (event) => {
   hideNotesChip();
   const x = event.clientX, y = event.clientY, target = event.target;
   setTimeout(() => {
-    if (!event.defaultPrevented || !adapter()) return;
-    const selection = String(window.getSelection() || '').slice(0, 20000), image = !!pictureAt(x, y);
+    const root = messageAt(target);
+    if (!event.defaultPrevented || !adapter() || !root) return;
+    const selection = String(window.getSelection() || '').slice(0, 20000), media = pictureAt(x, y) || bigPicture(root), video = media && looksLikeVideo(root);
     const chip = document.createElement('div'); chip.className = 'wam-float wam-notes-chip';
     chip.style.cssText = 'position:fixed;z-index:2147483647;display:flex;gap:4px;padding:4px;background:#fff;border:1px solid rgba(0,0,0,.12);border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.2);font:13px/1.2 "Segoe UI","Microsoft YaHei",sans-serif';
-    const add = (label, kind) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.style.cssText = 'border:0;border-radius:6px;padding:6px 10px;background:#3370ff;color:#fff;cursor:pointer;font:inherit;white-space:nowrap';
+    const add = (label, kind) => {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = label;
+      b.style.cssText = 'border:0;border-radius:6px;padding:6px 10px;background:#3370ff;color:#fff;cursor:pointer;font:inherit;white-space:nowrap';
       b.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); }, true);
-      b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); hideNotesChip(); captureForNotes({ kind, x, y, selection: kind === 'image' ? '' : selection }); }, true); chip.append(b); };
-    add(selection ? '📌 保存选中文字' : '📌 保存到备注', 'text'); if (image) add('🖼 保存图片', 'image');
+      b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); hideNotesChip(); captureForNotes({ kind, x, y, selection: kind === 'text' ? selection : '', root, target, media });
+        // Close the page's own menu that is still open
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true })); }, true);
+      chip.append(b);
+    };
+    if (selection) add('📌 保存选中文字', 'text');
+    else if (video) add('🎬 保存影片到备注', 'video');
+    else if (media) add('🖼 保存图片到备注', 'image');
+    else add('📌 保存到备注', 'text');
     document.documentElement.append(chip);
     // Sit just above-left of the click, where the platform's own menu (which opens down-right) does not cover it
     const r = chip.getBoundingClientRect();
