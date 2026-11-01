@@ -1592,7 +1592,9 @@ if (location.host === 'web.telegram.org') {
   });
 }
 // "保存到备注": the message or picture under the right-click, with who sent it and when, goes to the app's notes
-ipcRenderer.on('notes:capture', async (_event, request) => {
+// Pictures often sit under a transparent overlay, so look through everything at the click point
+const pictureAt = (x, y) => document.elementsFromPoint(x, y).find((el) => /^(IMG|VIDEO)$/.test(el.tagName) && (el.naturalWidth || el.videoWidth || el.width || 0) >= 60 && !el.closest('[class*="avatar" i]'));
+async function captureForNotes(request) {
   try {
     const at = document.elementFromPoint(Number(request.x) || 0, Number(request.y) || 0);
     if (!at) throw new Error('没有找到这条消息');
@@ -1604,7 +1606,7 @@ ipcRenderer.on('notes:capture', async (_event, request) => {
     const time = pre?.[1] || root.querySelector('time')?.getAttribute('datetime') || (root.querySelector('.message-time, .time')?.textContent || '').trim();
     let imageData = '';
     if (request.kind === 'image') {
-      const pic = at.tagName === 'IMG' || at.tagName === 'VIDEO' ? at : [...root.querySelectorAll('img, video')].find((i) => (i.naturalWidth || i.videoWidth || 0) >= 60);
+      const pic = pictureAt(Number(request.x) || 0, Number(request.y) || 0) || [...root.querySelectorAll('img, video')].find((i) => (i.naturalWidth || i.videoWidth || 0) >= 60);
       if (!pic) throw new Error('没有找到图片');
       const w = pic.naturalWidth || pic.videoWidth, h = pic.naturalHeight || pic.videoHeight, scale = Math.min(1, 1600 / Math.max(w, h));
       const canvas = document.createElement('canvas'); canvas.width = Math.round(w * scale); canvas.height = Math.round(h * scale);
@@ -1614,7 +1616,35 @@ ipcRenderer.on('notes:capture', async (_event, request) => {
     const text = request.selection || parts.join('\n') || (request.kind === 'image' ? '' : clean(root));
     ipcRenderer.sendToHost('notes:captured', { kind: request.kind === 'image' ? 'image' : 'text', text: text.slice(0, 20000), author: author.slice(0, 120), time: String(time).slice(0, 60), imageData });
   } catch (error) { ipcRenderer.sendToHost('notes:captured', { error: error.message === 'The operation is insecure.' ? '这张图片无法保存（平台限制）' : error.message }); }
-});
+}
+ipcRenderer.on('notes:capture', (_event, request) => captureForNotes(request));
+// WhatsApp and Telegram replace the right-click menu with their own, so the app's menu never shows. When a page does
+// that, a small "保存到备注" chip appears beside the click as well; the page's own menu keeps working.
+let notesChip = null;
+const hideNotesChip = () => { notesChip?.remove(); notesChip = null; };
+window.addEventListener('contextmenu', (event) => {
+  hideNotesChip();
+  const x = event.clientX, y = event.clientY, target = event.target;
+  setTimeout(() => {
+    if (!event.defaultPrevented || !adapter()) return;
+    const selection = String(window.getSelection() || '').slice(0, 20000), image = !!pictureAt(x, y);
+    const chip = document.createElement('div'); chip.className = 'wam-float wam-notes-chip';
+    chip.style.cssText = 'position:fixed;z-index:2147483647;display:flex;gap:4px;padding:4px;background:#fff;border:1px solid rgba(0,0,0,.12);border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.2);font:13px/1.2 "Segoe UI","Microsoft YaHei",sans-serif';
+    const add = (label, kind) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.style.cssText = 'border:0;border-radius:6px;padding:6px 10px;background:#3370ff;color:#fff;cursor:pointer;font:inherit;white-space:nowrap';
+      b.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); }, true);
+      b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); hideNotesChip(); captureForNotes({ kind, x, y, selection: kind === 'image' ? '' : selection }); }, true); chip.append(b); };
+    add(selection ? '📌 保存选中文字' : '📌 保存到备注', 'text'); if (image) add('🖼 保存图片', 'image');
+    document.documentElement.append(chip);
+    // Sit just above-left of the click, where the platform's own menu (which opens down-right) does not cover it
+    const r = chip.getBoundingClientRect();
+    chip.style.left = Math.max(4, Math.min(innerWidth - r.width - 4, x - r.width - 6)) + 'px';
+    chip.style.top = Math.max(4, Math.min(innerHeight - r.height - 4, y - r.height - 6)) + 'px';
+    notesChip = chip; setTimeout(() => { if (notesChip === chip) hideNotesChip(); }, 6000);
+  }, 0);
+}, true);
+window.addEventListener('mousedown', (e) => { if (notesChip && !notesChip.contains(e.target)) hideNotesChip(); }, true);
+window.addEventListener('scroll', hideNotesChip, true);
+window.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideNotesChip(); }, true);
 ipcRenderer.on('blackcat:system',(_event,policy)=>{
   const value={notifications:policy?.notifications!==false,notificationSound:policy?.notificationSound!==false,hostNotification:location.hostname==='web.telegram.org',managedMessageSound:policy?.managedMessageSound===true};
   webFrame.executeJavaScript(`(()=>{const value=${JSON.stringify(value)};const key='__blackcatNotificationPolicy';if(window[key]){window[key].value=value;if(!value.notifications)for(const n of window[key].open)n.close();return;}const state={value,open:new Set()};Object.defineProperty(window,key,{value:state});const Native=window.Notification;if(typeof Native!=='function')return;class QuietNotification extends EventTarget{constructor(title,options){super();this.title=String(title);this.body=options?.body||'';}close(){this.dispatchEvent(new Event('close'));}}const Wrapped=new Proxy(Native,{construct(target,args){if(state.value.managedMessageSound)window.dispatchEvent(new Event('blackcat:message-notification'));if(!state.value.notifications||state.value.hostNotification)return new QuietNotification(args[0],args[1]);const options={...(args[1]||{})};if(state.value.managedMessageSound||!state.value.notificationSound)options.silent=true;const item=Reflect.construct(target,[args[0],options]);state.open.add(item);item.addEventListener('close',()=>state.open.delete(item),{once:true});return item;},get(target,key){if(key==='permission'&&!state.value.notifications)return'denied';if(key==='requestPermission')return callback=>{if(!state.value.notifications){callback?.('denied');return Promise.resolve('denied');}return target.requestPermission(callback);};return Reflect.get(target,key,target);}});window.Notification=Wrapped;})()`).catch(()=>{});
