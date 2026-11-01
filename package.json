@@ -29,6 +29,7 @@
       "media-source.js",
       "knowledge-learning.js",
       "conversation-notes.js",
+      "conversation-clips.js",
       "backup-main.js",
       "backup-archive.js",
       "backup-bundle.js",

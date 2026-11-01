@@ -1591,6 +1591,30 @@ if (location.host === 'web.telegram.org') {
     if (n) ipcRenderer.sendToHost('wam:page-notification', { title: String(n.title).slice(0, 120), body: String(n.body).slice(0, 500), id: String(n.id).slice(0, 80), silent: n.silent === true });
   });
 }
+// "保存到备注": the message or picture under the right-click, with who sent it and when, goes to the app's notes
+ipcRenderer.on('notes:capture', async (_event, request) => {
+  try {
+    const at = document.elementFromPoint(Number(request.x) || 0, Number(request.y) || 0);
+    if (!at) throw new Error('没有找到这条消息');
+    const root = at.closest('#main [data-id^="true_"], #main [data-id^="false_"], .Message, [data-message-id], [data-mid], [role="row"]') || at.parentElement || at;
+    const clean = (node) => { const c = node.cloneNode(true); c.querySelectorAll('.wam-tr, .wam-float, .wam-send-hint, script, style').forEach((n) => n.remove()); c.querySelectorAll('img[alt]').forEach((i) => i.replaceWith(i.getAttribute('alt'))); return (c.textContent || '').replace(/[ \t]+\n/g, '\n').trim(); };
+    const ad = adapter(), parts = ad ? [...root.querySelectorAll(ad.messages)].filter((n) => !ad.skip?.(n)).map(clean).filter(Boolean) : [];
+    const pre = (root.querySelector('[data-pre-plain-text]')?.getAttribute('data-pre-plain-text') || '').match(/^\[([^\]]*)\]\s*(.*?):\s*$/);
+    const author = pre?.[2] || (root.querySelector('.message-title, .sender-title, [data-sender-name]')?.textContent || '').trim();
+    const time = pre?.[1] || root.querySelector('time')?.getAttribute('datetime') || (root.querySelector('.message-time, .time')?.textContent || '').trim();
+    let imageData = '';
+    if (request.kind === 'image') {
+      const pic = at.tagName === 'IMG' || at.tagName === 'VIDEO' ? at : [...root.querySelectorAll('img, video')].find((i) => (i.naturalWidth || i.videoWidth || 0) >= 60);
+      if (!pic) throw new Error('没有找到图片');
+      const w = pic.naturalWidth || pic.videoWidth, h = pic.naturalHeight || pic.videoHeight, scale = Math.min(1, 1600 / Math.max(w, h));
+      const canvas = document.createElement('canvas'); canvas.width = Math.round(w * scale); canvas.height = Math.round(h * scale);
+      canvas.getContext('2d').drawImage(pic, 0, 0, canvas.width, canvas.height);
+      imageData = canvas.toDataURL('image/jpeg', 0.9);
+    }
+    const text = request.selection || parts.join('\n') || (request.kind === 'image' ? '' : clean(root));
+    ipcRenderer.sendToHost('notes:captured', { kind: request.kind === 'image' ? 'image' : 'text', text: text.slice(0, 20000), author: author.slice(0, 120), time: String(time).slice(0, 60), imageData });
+  } catch (error) { ipcRenderer.sendToHost('notes:captured', { error: error.message === 'The operation is insecure.' ? '这张图片无法保存（平台限制）' : error.message }); }
+});
 ipcRenderer.on('blackcat:system',(_event,policy)=>{
   const value={notifications:policy?.notifications!==false,notificationSound:policy?.notificationSound!==false,hostNotification:location.hostname==='web.telegram.org',managedMessageSound:policy?.managedMessageSound===true};
   webFrame.executeJavaScript(`(()=>{const value=${JSON.stringify(value)};const key='__blackcatNotificationPolicy';if(window[key]){window[key].value=value;if(!value.notifications)for(const n of window[key].open)n.close();return;}const state={value,open:new Set()};Object.defineProperty(window,key,{value:state});const Native=window.Notification;if(typeof Native!=='function')return;class QuietNotification extends EventTarget{constructor(title,options){super();this.title=String(title);this.body=options?.body||'';}close(){this.dispatchEvent(new Event('close'));}}const Wrapped=new Proxy(Native,{construct(target,args){if(state.value.managedMessageSound)window.dispatchEvent(new Event('blackcat:message-notification'));if(!state.value.notifications||state.value.hostNotification)return new QuietNotification(args[0],args[1]);const options={...(args[1]||{})};if(state.value.managedMessageSound||!state.value.notificationSound)options.silent=true;const item=Reflect.construct(target,[args[0],options]);state.open.add(item);item.addEventListener('close',()=>state.open.delete(item),{once:true});return item;},get(target,key){if(key==='permission'&&!state.value.notifications)return'denied';if(key==='requestPermission')return callback=>{if(!state.value.notifications){callback?.('denied');return Promise.resolve('denied');}return target.requestPermission(callback);};return Reflect.get(target,key,target);}});window.Notification=Wrapped;})()`).catch(()=>{});

@@ -6,7 +6,40 @@
   const transitions=new Map();
   let selected = null; let renderedKey = null; let requestEpoch = 0;
   const keyOf = (accountId, chatKey) => JSON.stringify([accountId, chatKey]);
+  // Saved messages and pictures ("保存到备注"), listed under the note of the open conversation
+  window.I18N?.extend({ '已保存的消息': 'Saved messages', '在聊天里右键消息或图片 → 保存到备注。': 'Right-click a message or image in the chat → Save to notes.', '已保存到备注': 'Saved to notes', '删除': 'Delete', '图片': 'Image', '还没有保存的消息。': 'Nothing saved yet.' });
+  const clips = new Map(), clipsLoading = new Set(); let clipsDrawn = ''; const clipList = document.getElementById('notes-clips-list');
+  function drawClips() {
+    const box = document.getElementById('notes-clips'), entry = selected; box.hidden = !entry;
+    if (!entry) return;
+    const items = clips.get(entry.key);
+    if (!items) { if (!clipsLoading.has(entry.key)) { clipsLoading.add(entry.key); window.api.clipList({ accountId: entry.accountId, chatKey: entry.chatKey }).then((r) => { clips.set(entry.key, r?.ok ? r.data : []); }).finally(() => { clipsLoading.delete(entry.key); if (selected === entry) drawClips(); }); } clipList.replaceChildren(); return; }
+    const drawn = entry.key + '|' + items.length; if (drawn === clipsDrawn && clipList.childElementCount) return; clipsDrawn = drawn;
+    document.getElementById('notes-clips-count').textContent = items.length ? '(' + items.length + ')' : '';
+    if (!items.length) { const p = document.createElement('p'); p.className = 'hub-muted'; p.textContent = t('还没有保存的消息。'); clipList.replaceChildren(p); return; }
+    clipList.replaceChildren(...[...items].reverse().map((item) => {
+      const el = document.createElement('div'); el.className = 'note-clip';
+      const meta = document.createElement('div'); meta.className = 'note-clip-meta';
+      meta.textContent = [item.author, item.time].filter(Boolean).join(' · ') || new Date(item.savedAt).toLocaleString(document.documentElement.lang === 'en' ? 'en' : 'zh-CN');
+      const del = document.createElement('button'); del.type = 'button'; del.className = 'link-btn note-clip-delete'; del.textContent = t('删除');
+      del.addEventListener('click', async () => { const r = await window.api.clipRemove({ accountId: entry.accountId, chatKey: entry.chatKey, id: item.id }); if (!r?.ok) return toast(r?.error || '删除失败', true); clips.set(entry.key, (clips.get(entry.key) || []).filter((i) => i.id !== item.id)); drawClips(); });
+      meta.append(del); el.append(meta);
+      if (item.src) { const img = document.createElement('img'); img.src = item.src; img.alt = t('图片'); img.title = t('图片'); img.addEventListener('click', () => window.api.clipOpen({ accountId: entry.accountId, chatKey: entry.chatKey, id: item.id }).then((r) => { if (!r?.ok) toast(r?.error || '无法打开图片', true); })); el.append(img); }
+      if (item.text) { const text = document.createElement('div'); text.className = 'note-clip-text'; text.textContent = item.text; text.addEventListener('click', () => text.classList.toggle('open')); el.append(text); }
+      return el;
+    }));
+  }
+  async function saveClip(accountId, data) {
+    if (data?.error) return toast(data.error, true);
+    const context = contexts.get(accountId);
+    if (!context?.key || context.ambiguous) return toast(t('打开一个对话，即可添加备注。'), true);
+    const r = await window.api.clipAdd({ accountId, chatKey: context.key, title: context.title, kind: data.kind, text: data.text, author: data.author, time: data.time, imageData: data.imageData });
+    if (!r?.ok) return toast(r?.error || '保存失败', true);
+    const k = keyOf(accountId, context.key); if (clips.has(k)) clips.set(k, [...clips.get(k), r.data]);
+    toast(t('已保存到备注')); if (selected?.key === k) drawClips();
+  }
   function draw() {
+    drawClips();
     const acc = findAcc(activeId()); const context = acc && contexts.get(acc.id); const entry = selected;const switching=acc&&transitions.get(acc.id);
     document.getElementById('notes-account').textContent = acc ? `${acc.name} · ${PLATFORMS[acc.platform].label}` : '';
     document.getElementById('notes-conversation').textContent = switching?.title||context?.title || '';
@@ -65,6 +98,6 @@
   });
   window.addEventListener('blackcat:preferences', draw);
   function pause(accountId,hint){if(selected?.accountId===accountId&&selected.dirty)persist(selected);clearTimeout(transitions.get(accountId)?.timer);const old=contexts.get(accountId);const transition={oldKey:old?.key,expectedKey:hint?.key,title:hint?.title||old?.title||''};transition.timer=setTimeout(()=>{if(transitions.get(accountId)!==transition)return;transitions.delete(accountId);contexts.delete(accountId);if(accountId===activeId()){selected=null;++requestEpoch;draw();}},4000);transitions.set(accountId,transition);if(accountId===activeId())draw();}
-  window.conversationNotes = { flush:async(accountId,chatKey)=>{const entry=entries.get(keyOf(accountId,chatKey));if(!entry)return;for(let i=0;i<150&&entry.saving;i++)await new Promise(r=>setTimeout(r,20));if(entry.dirty)await persist(entry);for(let i=0;i<150&&entry.saving;i++)await new Promise(r=>setTimeout(r,20));if(entry.dirty||entry.error)throw Error('当前备注尚未保存，请先处理保存错误');},reload:async(accountId,chatKey)=>{const key=keyOf(accountId,chatKey),entry=entries.get(key);if(entry?.dirty||entry?.saving)throw Error('此备注还有未保存的编辑，请先等待保存完成');if(entry)versions.set(key,entry.version);entries.delete(key);if(selected?.key===key){selected=null;await refreshAccount();const loaded=entries.get(key);if(loaded)loaded.version=Math.max(loaded.version,entry?.version||0);}},setContext, refreshAccount, pause, getState: () => selected && ({ accountId: selected.accountId, chatKey: selected.chatKey, title:selected.title,text: selected.text, dirty: selected.dirty, saving: selected.saving,switching:transitions.has(selected.accountId) }) };
+  window.conversationNotes = { saveClip, flush:async(accountId,chatKey)=>{const entry=entries.get(keyOf(accountId,chatKey));if(!entry)return;for(let i=0;i<150&&entry.saving;i++)await new Promise(r=>setTimeout(r,20));if(entry.dirty)await persist(entry);for(let i=0;i<150&&entry.saving;i++)await new Promise(r=>setTimeout(r,20));if(entry.dirty||entry.error)throw Error('当前备注尚未保存，请先处理保存错误');},reload:async(accountId,chatKey)=>{const key=keyOf(accountId,chatKey),entry=entries.get(key);if(entry?.dirty||entry?.saving)throw Error('此备注还有未保存的编辑，请先等待保存完成');if(entry)versions.set(key,entry.version);entries.delete(key);if(selected?.key===key){selected=null;await refreshAccount();const loaded=entries.get(key);if(loaded)loaded.version=Math.max(loaded.version,entry?.version||0);}},setContext, refreshAccount, pause, getState: () => selected && ({ accountId: selected.accountId, chatKey: selected.chatKey, title:selected.title,text: selected.text, dirty: selected.dirty, saving: selected.saving,switching:transitions.has(selected.accountId) }) };
   window.addEventListener('DOMContentLoaded', refreshAccount);
 })();

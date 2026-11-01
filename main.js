@@ -212,6 +212,18 @@ app.on('web-contents-created', (_e, contents) => {
   if (contents.getType() !== 'webview') return;
   contents.on('focus', () => { if (win && !win.isDestroyed()) win.flashFrame(false); });
   managedGuests.set(contents.id, contents);
+  // Right-click in a chat: copy/paste, and save the message or picture into this customer's notes
+  contents.on('context-menu', (_event, params) => {
+    const items = [];
+    if (params.isEditable) items.push({ role: 'cut', label: '剪切 / Cut' }, { role: 'copy', label: '复制 / Copy' }, { role: 'paste', label: '粘贴 / Paste' }, { type: 'separator' }, { role: 'selectAll', label: '全选 / Select all' });
+    else {
+      if (params.selectionText) items.push({ role: 'copy', label: '复制 / Copy' });
+      const capture = (kind) => () => { if (!contents.isDestroyed()) contents.send('notes:capture', { kind, x: params.x, y: params.y, selection: String(params.selectionText || '').slice(0, 20000) }); };
+      if (params.mediaType === 'image') items.push({ label: '保存图片到备注 / Save image to notes', click: capture('image') });
+      items.push({ label: params.selectionText ? '保存选中文字到备注 / Save selection to notes' : '保存这条消息到备注 / Save message to notes', click: capture('text') });
+    }
+    Menu.buildFromTemplate(items).popup({ window: win && !win.isDestroyed() ? win : undefined });
+  });
   contents.once('destroyed', () => { managedGuests.delete(contents.id); guestActivity.delete(contents.id); });
   // 防止 WebRTC 绕过代理暴露真实 IP
   contents.setWebRTCIPHandlingPolicy('disable_non_proxied_udp');
@@ -569,6 +581,7 @@ ipcMain.handle('proxy:test', async (_e, proxy) => {
 });
 
 require('./conversation-notes').registerNotes({ app, ipcMain, getWindow: () => win, loadAccounts });
+require('./conversation-clips').registerClips({ app, ipcMain, shell, getWindow: () => win, loadAccounts });
 const appSystem=require('./app-system').registerAppSystem({app,ipcMain,session,getWindow:()=>win,managedGuests,loadAccounts,clearTranslationCache});
 require('./desktop-notifications').registerDesktopNotifications({app,ipcMain,BrowserWindow,getWindow:()=>win,getPolicy:()=>appSystem.get(),loadAccounts});
 require('./app-assistant').registerAssistant({app,ipcMain,getWindow:()=>win,getKey:()=>claudeAccess().apiKey,getBaseURL:()=>claudeAccess().baseURL,

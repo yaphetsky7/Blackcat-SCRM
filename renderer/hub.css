@@ -289,3 +289,11 @@
 .notes-privacy { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 14px; }
 
 #backup-viewer.bv-deleting .bv-actions,#backup-viewer.bv-deleting #bv-accounts,#backup-viewer.bv-deleting #bv-chats,#backup-viewer.bv-deleting #bv-categories,#backup-viewer.bv-deleting #bv-delete-chat{pointer-events:none;opacity:.55}
+#notes-clips { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 12px; }
+#notes-clips h4 { margin: 0 0 4px; font-size: 13px; }
+#notes-clips > .hub-muted { margin: 0 0 10px; font-size: 12px; }
+.note-clip { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; background: var(--bg); }
+.note-clip-meta { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+.note-clip img { display: block; max-width: 100%; max-height: 220px; border-radius: 6px; cursor: zoom-in; margin: 4px 0; }
+.note-clip-text { white-space: pre-wrap; word-break: break-word; font-size: 13px; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
+.note-clip-text.open { display: block; }
