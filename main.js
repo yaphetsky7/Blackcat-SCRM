@@ -582,7 +582,7 @@ ipcMain.handle('proxy:test', async (_e, proxy) => {
 });
 
 require('./conversation-notes').registerNotes({ app, ipcMain, getWindow: () => win, loadAccounts });
-require('./conversation-clips').registerClips({ app, ipcMain, shell, getWindow: () => win, loadAccounts });
+require('./conversation-clips').registerClips({ app, ipcMain, shell, getWindow: () => win, loadAccounts, managedGuests });
 const appSystem=require('./app-system').registerAppSystem({app,ipcMain,session,getWindow:()=>win,managedGuests,loadAccounts,clearTranslationCache});
 require('./desktop-notifications').registerDesktopNotifications({app,ipcMain,BrowserWindow,getWindow:()=>win,getPolicy:()=>appSystem.get(),loadAccounts});
 require('./app-assistant').registerAssistant({app,ipcMain,getWindow:()=>win,getKey:()=>claudeAccess().apiKey,getBaseURL:()=>claudeAccess().baseURL,

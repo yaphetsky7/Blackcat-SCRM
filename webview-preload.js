@@ -239,6 +239,15 @@ const facebookAvatar = () => (location.host.endsWith('facebook.com')
   : null);
 
 const adapter = () => ADAPTERS.find((a) => a.match());
+// WhatsApp messages: older pages put "true_/false_" (sent/received) in data-id; newer ones only an id inside a list row,
+// so sent messages are told apart by their bubble sitting on the right half of the chat
+const WA_MESSAGES = '#main [data-id^="true_"], #main [data-id^="false_"], #main [role="row"] [data-id]';
+function waOutgoing(root) {
+  const marked = (root.getAttribute('data-id') || '').match(/^(true|false)_/);
+  if (marked) return marked[1] === 'true';
+  const chat = document.querySelector('#main')?.getBoundingClientRect(), bubble = (root.querySelector('.copyable-text, [aria-label="Voice message"], img[src^="blob:"], video') || root).getBoundingClientRect();
+  return !!chat?.width && bubble.width > 0 && bubble.left + bubble.width / 2 > chat.left + chat.width / 2;
+}
 
 // ---------- 设置 ----------
 
@@ -1340,7 +1349,7 @@ function installInboxBridge(deps) {
   }
   async function richThread(ref, limit = 30, pictures = 4) {
     if (platform() !== 'whatsapp') return thread(ref).slice(-limit).map((m) => ({ ...m, author: '', time: '', media: [] }));
-    const ad = getAdapter(), all = [...document.querySelectorAll('#main [data-id^="true_"],#main [data-id^="false_"]')];
+    const ad = getAdapter(), all = [...document.querySelectorAll(WA_MESSAGES)];
     const roots = all.filter((el) => !all.some((p) => p !== el && p.contains(el)));
     const names = new Map(), out = [];
     for (const root of roots) {
@@ -1352,7 +1361,7 @@ function installInboxBridge(deps) {
       const media = waMedia(root);
       if (!text && !media.length) continue;
       const time = pre?.[1] || [...root.querySelectorAll('span,div')].filter((n) => !n.childElementCount).map((n) => n.textContent.trim()).filter((t) => /^\d{1,2}:\d{2}(\s?[ap]\.?m\.?)?$/i.test(t)).pop() || '';
-      out.push({ id, direction: id.startsWith('true_') ? 'outgoing' : 'incoming', member, author: pre?.[2] || '', time, text: text.slice(0, 4000), media });
+      out.push({ id, direction: waOutgoing(root) ? 'outgoing' : 'incoming', member, author: pre?.[2] || '', time, text: text.slice(0, 4000), media });
     }
     for (const m of out) if (!m.author && m.member) m.author = names.get(m.member) || (m.member.endsWith('@lid') ? '' : '+' + m.member.replace(/@.*/, ''));
     const recent = out.slice(-limit);
@@ -1522,7 +1531,7 @@ function installBackupGuest({ipc,getConfig,getAdapter,getComposer,getBoxText,bri
   let lastDigest='',lastCapture=0,capturing=false,workers=0,awaitingChat=null,lastReadChat='',lastReadSignature='',chatSeenId='',chatSeenAt=0;const pending=new Map(),active=new Set(),failed=new Map();
   const hash=text=>{let n=2166136261;for(const c of String(text)){n^=c.codePointAt(0);n=Math.imul(n,16777619);}return(n>>>0).toString(36);};
   const enabled=()=>getConfig()?.backupWatch===true;
-  function roots(){const p=location.host;const selector=p==='web.telegram.org'?'.Message':p==='web.whatsapp.com'?'#main [data-id^="true_"],#main [data-id^="false_"]':p.endsWith('facebook.com')?'[role="main"] [role="row"]':'[data-message-id],[class*="messageItem" i]';const nodes=new Set(document.querySelectorAll(selector));for(const el of document.querySelectorAll(getAdapter()?.messages||'[data-no-message]'))nodes.add(el.closest(selector)||el.parentElement);const area=document.querySelector('#main,#MiddleColumn,.MessageList,[role="main"],[class*="chatroomContent" i]');if(area)for(const el of area.querySelectorAll('video,audio,a[download],[class*="imageMessage" i] img,[class*="mediaMessage" i] img'))nodes.add(el.closest(selector)||el.parentElement);return[...nodes].filter(el=>!el.closest('.wam-tr,.wam-float,[contenteditable="true"]')&&![...nodes].some(parent=>parent!==el&&parent.contains(el)));}
+  function roots(){const p=location.host;const selector=p==='web.telegram.org'?'.Message':p==='web.whatsapp.com'?WA_MESSAGES:p.endsWith('facebook.com')?'[role="main"] [role="row"]':'[data-message-id],[class*="messageItem" i]';const nodes=new Set(document.querySelectorAll(selector));for(const el of document.querySelectorAll(getAdapter()?.messages||'[data-no-message]'))nodes.add(el.closest(selector)||el.parentElement);const area=document.querySelector('#main,#MiddleColumn,.MessageList,[role="main"],[class*="chatroomContent" i]');if(area)for(const el of area.querySelectorAll('video,audio,a[download],[class*="imageMessage" i] img,[class*="mediaMessage" i] img'))nodes.add(el.closest(selector)||el.parentElement);return[...nodes].filter(el=>!el.closest('.wam-tr,.wam-float,[contenteditable="true"]')&&![...nodes].some(parent=>parent!==el&&parent.contains(el)));}
   const reactionSelector='.Reactions,.reactions,.Reaction,.reaction,.ReactionButton,[data-reaction],[class*="Reaction"]';
   const customEmojiSelector='custom-emoji,[data-custom-emoji-id],[data-document-id].emoji,.custom-emoji,[class*="customEmoji"],[class*="CustomEmoji"]';
   function emojiValue(value){const v=String(value||'').trim();return v.length<=100&&/^[\p{Extended_Pictographic}\p{Regional_Indicator}\p{Emoji_Modifier}\u200d\ufe0e\ufe0f\u20e30-9#*\u{e0020}-\u{e007f}]+$/u.test(v)&&/[\p{Extended_Pictographic}\p{Regional_Indicator}\u20e3]/u.test(v)?v:'';}
@@ -1542,7 +1551,7 @@ function installBackupGuest({ipc,getConfig,getAdapter,getComposer,getBoxText,bri
     for(const root of roots()){
       const ad=getAdapter();const content=[...root.querySelectorAll(ad.messages)].filter(el=>!ad.skip?.(el)&&(!ad.leafOnly||!el.querySelector(ad.messages)));if(root.matches(ad.messages))content.unshift(root);
       const text=content.map(textOf).filter(Boolean).join('\n');const time=root.querySelector('time')?.getAttribute('datetime')||root.querySelector('[data-pre-plain-text]')?.getAttribute('data-pre-plain-text')||root.querySelector('.MessageMeta [title],.message-time[title]')?.getAttribute('title')||root.getAttribute('data-timestamp')||root.querySelector('.MessageMeta,.message-time')?.textContent||'';
-      const waDirection=location.host==='web.whatsapp.com'?(root.getAttribute('data-id')||'').match(/^(true|false)_/)?.[1]:null;
+      const waDirection=location.host==='web.whatsapp.com'?(waOutgoing(root)?'true':'false'):null;
       const direction=waDirection?waDirection==='true'?'outgoing':'incoming':root.closest('.own,.message-out,[data-direction="outgoing"],[data-is-outgoing="true"]')||root.querySelector('[data-is-outgoing="true"]')?'outgoing':root.closest('.message-in,.Message:not(.own),[data-direction="incoming"],[data-is-outgoing="false"]')?'incoming':'unknown';
       const nativeId=root.getAttribute('data-message-id')||root.getAttribute('data-mid')||root.getAttribute('data-id')||root.id;
       const assets=[],ignoredAssetSlots=[],ignoredImageSlots=[],videoBoxes=new Set(),reactions=reactionData(root);let slot=0;for(const el of root.querySelectorAll('img,video,audio,a[download],[data-download-url]')){
@@ -1591,22 +1600,25 @@ if (location.host === 'web.telegram.org') {
     if (n) ipcRenderer.sendToHost('wam:page-notification', { title: String(n.title).slice(0, 120), body: String(n.body).slice(0, 500), id: String(n.id).slice(0, 80), silent: n.silent === true });
   });
 }
-// "保存到备注": the message, picture or video under the right-click, with who sent it and when, goes to the app's notes.
-// A message bubble inside the open conversation (never the chat list on the left)
-const MESSAGE_ROOT = '#main [data-id^="true_"], #main [data-id^="false_"], #MiddleColumn .Message, .MessageList .Message, #MiddleColumn [id^="message-"], [role="main"] [role="row"], [data-message-id], [data-mid]';
+// "保存到备注": the message, picture, video, voice note or file under the right-click, with who sent it and when, goes to
+// the app's notes. A message bubble inside the open conversation (never the chat list on the left):
+const MESSAGE_ROOT = WA_MESSAGES + ', #MiddleColumn .Message, .MessageList .Message, #MiddleColumn [id^="message-"], [role="main"] [role="row"], [data-message-id], [data-mid]';
 const messageAt = (el) => el?.closest?.(MESSAGE_ROOT) || null;
+const messageId = (root) => root?.getAttribute('data-id') || root?.id || '';
 // Pictures often sit under a transparent overlay, so look through everything at the click point
 const pictureAt = (x, y) => document.elementsFromPoint(x, y).find((el) => /^(IMG|VIDEO)$/.test(el.tagName) && (el.naturalWidth || el.videoWidth || el.width || 0) >= 60 && !el.closest('[class*="avatar" i]'));
-const bigPicture = (root) => [...root.querySelectorAll('img, video')].find((i) => (i.naturalWidth || i.videoWidth || 0) >= 60 && !i.closest('[class*="avatar" i]'));
-// A playable video in the message: WhatsApp / Telegram only load the file once it has been played
-const videoIn = (root, x, y) => document.elementsFromPoint(x, y).find((el) => el.tagName === 'VIDEO') || root.querySelector('video');
-const looksLikeVideo = (root) => !!(root.querySelector('video, [data-icon*="media-play"], [data-icon*="msg-video"], [data-icon*="media-gif"]'));
+const bigPicture = (root) => [...root.querySelectorAll('img, video')].find((i) => (i.naturalWidth || i.videoWidth || 0) >= 60 && !i.closest('[class*="avatar" i], [class*="emoji" i], [class*="reaction" i]'));
+const looksLikeVoice = (root) => !!root.querySelector('[aria-label="Voice message"], [aria-label*="voice message" i], [aria-label*="语音"], [data-icon*="ptt"], [data-icon*="audio-play"], .Audio.voice, .Audio [class*="waveform" i], [class*="voice" i]');
+const looksLikeVideo = (root) => !!root.querySelector('video, [data-icon*="media-play"], [data-icon*="msg-video"], [data-icon*="media-gif"], [aria-label*="Play video" i], [aria-label*="播放影片"], .message-media-duration');
+const downloadControl = (root) => root.querySelector('[aria-label^="Download" i], [title^="Download" i], [aria-label*="下载"], [title*="下载"], [data-icon*="download"], .File .file-icon, .File');
+const looksLikeFile = (root) => !looksLikeVoice(root) && !!(root.querySelector('.File, [data-icon*="document"], [data-icon^="doc-"], [aria-label*="document" i], [title*=".pdf" i], [title*=".doc" i], [title*=".xls" i], [title*=".zip" i]') || (downloadControl(root) && !bigPicture(root)));
+const kindOf = (root, media) => (looksLikeVoice(root) ? 'voice' : media && looksLikeVideo(root) ? 'video' : media ? 'image' : looksLikeFile(root) ? 'file' : 'text');
 // Message text without menus, buttons or icon-font names (Telegram draws its menu inside the message)
 const cleanText = (node) => {
   const c = node.cloneNode(true);
   c.querySelectorAll('.wam-tr, .wam-float, .wam-send-hint, script, style, button, svg, i, [role="menu"], [role="menuitem"], [class*="menu" i], [class*="reaction" i]').forEach((n) => n.remove());
   c.querySelectorAll('img[alt]').forEach((i) => i.replaceWith(i.getAttribute('alt')));
-  return (c.textContent || '').replace(/\bic-[\w-]+/g, ' ').replace(/[ \t]+\n/g, '\n').replace(/[ \t]{2,}/g, ' ').trim();
+  return (c.textContent || '').replace(/ic-[\w-]+/g, ' ').replace(/[ \t]+\n/g, '\n').replace(/[ \t]{2,}/g, ' ').trim();
 };
 const frameOf = (pic) => {
   const w = pic.naturalWidth || pic.videoWidth, h = pic.naturalHeight || pic.videoHeight;
@@ -1616,6 +1628,27 @@ const frameOf = (pic) => {
   canvas.getContext('2d').drawImage(pic, 0, 0, canvas.width, canvas.height);
   return canvas.toDataURL('image/jpeg', 0.9);
 };
+// Voice notes: the pages only fetch the audio when it is played (WhatsApp as a blob, Telegram through its own media
+// link). A page-side hook notes every audio source, and a click on a voice note ties the next new one to that message.
+const AUDIO_HOOK = `(()=>{if(window.__blackcatAudio)return;const list=window.__blackcatAudio=[];const keep=(u,type)=>{list.push({u,t:Date.now(),type});if(list.length>40)list.shift();};
+const make=URL.createObjectURL;URL.createObjectURL=function(o){const u=make.apply(this,arguments);try{if(o instanceof Blob&&/audio|ogg|opus|mpeg/i.test(o.type))keep(u,o.type);}catch{}return u;};
+const play=HTMLMediaElement.prototype.play;HTMLMediaElement.prototype.play=function(){try{const u=this.currentSrc||this.src;if(this instanceof HTMLAudioElement&&u&&!/^data:/.test(u))keep(u,'media');}catch{}return play.apply(this,arguments);};})()`;
+const voiceUrls = new Map();
+if (/^web\.(whatsapp\.com|telegram\.org)$/.test(location.host)) {
+  webFrame.executeJavaScript(AUDIO_HOOK).catch(() => {});
+  window.addEventListener('click', (event) => {
+    const root = messageAt(event.target);
+    if (!root || !looksLikeVoice(root) || !event.target.closest?.('button, [role="button"]')) return;
+    const id = messageId(root), since = Date.now() - 200;
+    (async () => { for (let i = 0; i < 40; i++) { await new Promise((r) => setTimeout(r, 250)); const u = await webFrame.executeJavaScript(`(window.__blackcatAudio||[]).filter(x=>x.t>=${since}).map(x=>x.u).pop()||''`).catch(() => ''); if (u) { voiceUrls.set(id, u); return; } } })();
+  }, true);
+}
+// Files: the page's own download button is clicked once the main process is ready to catch that one download
+const waitForDownload = (token) => new Promise((resolve, reject) => {
+  const timer = setTimeout(() => { ipcRenderer.removeListener('clips:download-done', done); reject(new Error('文件没有开始下载，请先在聊天里点一下文件让它下载，再保存')); }, 60000);
+  function done(_e, r) { if (r?.token !== token) return; clearTimeout(timer); ipcRenderer.removeListener('clips:download-done', done); r.error ? reject(new Error(r.error)) : resolve(r); }
+  ipcRenderer.on('clips:download-done', done);
+});
 async function captureForNotes(request) {
   try {
     // The chip passes what was under the right-click; by the time it is clicked the page's own menu covers that spot
@@ -1628,32 +1661,44 @@ async function captureForNotes(request) {
     const pre = (root.querySelector('[data-pre-plain-text]')?.getAttribute('data-pre-plain-text') || '').match(/^\[([^\]]*)\]\s*(.*?):\s*$/);
     const author = pre?.[2] || (root.querySelector('.message-title, .sender-title, [data-sender-name]')?.textContent || '').trim();
     const time = pre?.[1] || root.querySelector('time')?.getAttribute('datetime') || (root.querySelector('.message-time, .time')?.textContent || '').trim();
-    let kind = request.kind;
-    // "保存到备注" on a photo or video without words saves the photo / video itself
     const media = request.media || (request.root ? null : pictureAt(x, y)) || bigPicture(root);
-    if (kind === 'text' && !request.selection && !parts.length && media) kind = looksLikeVideo(root) ? 'video' : 'image';
+    let kind = request.kind;
+    // "保存到备注" on a photo, video, voice note or file without words saves that item itself
+    if (kind === 'text' && !request.selection && !parts.length) kind = kindOf(root, media);
     const out = { kind, text: request.selection || parts.join('\n'), author: author.slice(0, 120), time: String(time).slice(0, 60), imageData: '' };
     if (kind === 'image') {
-      const pic = media;
-      if (!pic) throw new Error('没有找到图片');
-      out.imageData = frameOf(pic);
+      if (!media) throw new Error('没有找到图片，请等图片载入完成');
+      out.imageData = frameOf(media);
+      if (!out.imageData) throw new Error('图片还没载入完成，请稍后再试');
     } else if (kind === 'video') {
-      const video = (request.media?.tagName === 'VIDEO' && request.media) || root.querySelector('video') || videoIn(root, x, y), src = video?.currentSrc || video?.src || '';
+      const video = (media?.tagName === 'VIDEO' && media) || root.querySelector('video'), src = video?.currentSrc || video?.src || '';
       if (!src || !/^(blob:|https?:)/.test(src)) throw new Error('请先点开播放这段影片，加载后再保存');
-      const response = await fetch(src);
-      if (!response.ok) throw new Error('影片无法读取');
-      const blob = await response.blob();
+      const blob = await (await fetch(src)).blob();
       if (blob.size > 200 * 1024 * 1024) throw new Error('影片超过 200 MB，无法保存');
       out.videoBytes = new Uint8Array(await blob.arrayBuffer()); out.mime = blob.type || 'video/mp4';
-      out.imageData = video.readyState >= 2 ? frameOf(video) : '';
+      out.imageData = video.readyState >= 2 ? frameOf(video) : (media?.tagName === 'IMG' ? frameOf(media) : '');
+    } else if (kind === 'voice') {
+      const src = voiceUrls.get(messageId(root)) || root.querySelector('audio')?.currentSrc || '';
+      if (!src) throw new Error('请先播放这段语音（播一下就行），再保存');
+      const blob = await (await fetch(src)).blob();
+      out.audioBytes = new Uint8Array(await blob.arrayBuffer()); out.mime = blob.type || 'audio/ogg';
+      out.text = out.text || (root.querySelector('[aria-label*="Voice message" i]') ? '' : '');
+    } else if (kind === 'file') {
+      const control = downloadControl(root);
+      if (!control) throw new Error('没有找到这个文件的下载按钮');
+      const ready = await ipcRenderer.invoke('clips:expect-download');
+      if (!ready?.ok) throw new Error(ready?.error || '无法保存文件');
+      press(control.closest('button, [role="button"], a') || control);
+      const got = await waitForDownload(ready.data);
+      Object.assign(out, { fileToken: ready.data, text: out.text || got.name || '', fileName: got.name });
     } else if (!out.text) out.text = cleanText(root);
-    out.text = out.text.slice(0, 20000);
+    out.text = String(out.text || '').slice(0, 20000);
     ipcRenderer.sendToHost('notes:captured', out);
   } catch (error) { ipcRenderer.sendToHost('notes:captured', { error: error.message === 'The operation is insecure.' ? '这个文件无法保存（平台限制）' : error.message }); }
 }
 ipcRenderer.on('notes:capture', (_event, request) => captureForNotes(request));
 // WhatsApp and Telegram replace the right-click menu with their own, so the app's menu never shows. When a page does
-// that on a message, a small "保存到备注" chip appears beside the click as well; the page's own menu keeps working.
+// that on a message, a small save chip appears beside the click as well; the page's own menu keeps working.
 let notesChip = null;
 const hideNotesChip = () => { notesChip?.remove(); notesChip = null; };
 window.addEventListener('contextmenu', (event) => {
@@ -1662,33 +1707,31 @@ window.addEventListener('contextmenu', (event) => {
   setTimeout(() => {
     const root = messageAt(target);
     if (!event.defaultPrevented || !adapter() || !root) return;
-    const selection = String(window.getSelection() || '').slice(0, 20000), media = pictureAt(x, y) || bigPicture(root), video = media && looksLikeVideo(root);
+    const selection = String(window.getSelection() || '').slice(0, 20000), media = pictureAt(x, y) || bigPicture(root), kind = selection ? 'text' : kindOf(root, media);
     const chip = document.createElement('div'); chip.className = 'wam-float wam-notes-chip';
     chip.style.cssText = 'position:fixed;z-index:2147483647;display:flex;gap:4px;padding:4px;background:#fff;border:1px solid rgba(0,0,0,.12);border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.2);font:13px/1.2 "Segoe UI","Microsoft YaHei",sans-serif';
-    const add = (label, kind) => {
-      const b = document.createElement('button'); b.type = 'button'; b.textContent = label;
-      b.style.cssText = 'border:0;border-radius:6px;padding:6px 10px;background:#3370ff;color:#fff;cursor:pointer;font:inherit;white-space:nowrap';
-      b.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); }, true);
-      b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); hideNotesChip(); captureForNotes({ kind, x, y, selection: kind === 'text' ? selection : '', root, target, media });
-        // Close the page's own menu that is still open
-        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true })); }, true);
-      chip.append(b);
-    };
-    if (selection) add('📌 保存选中文字', 'text');
-    else if (video) add('🎬 保存影片到备注', 'video');
-    else if (media) add('🖼 保存图片到备注', 'image');
-    else add('📌 保存到备注', 'text');
-    document.documentElement.append(chip);
+    const b = document.createElement('button'); b.type = 'button';
+    b.textContent = selection ? '📌 保存选中文字' : { voice: '🎤 保存语音到备注', video: '🎬 保存影片到备注', image: '🖼 保存图片到备注', file: '📄 保存文件到备注' }[kind] || '📌 保存到备注';
+    b.style.cssText = 'border:0;border-radius:6px;padding:6px 10px;background:#3370ff;color:#fff;cursor:pointer;font:inherit;white-space:nowrap';
+    b.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); }, true);
+    b.addEventListener('click', (e) => {
+      e.preventDefault(); e.stopPropagation(); hideNotesChip();
+      captureForNotes({ kind, x, y, selection, root, target, media });
+      // Close the page's own menu that is still open
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }));
+    }, true);
+    chip.append(b); document.documentElement.append(chip);
     // Sit just above-left of the click, where the platform's own menu (which opens down-right) does not cover it
     const r = chip.getBoundingClientRect();
     chip.style.left = Math.max(4, Math.min(innerWidth - r.width - 4, x - r.width - 6)) + 'px';
     chip.style.top = Math.max(4, Math.min(innerHeight - r.height - 4, y - r.height - 6)) + 'px';
-    notesChip = chip; setTimeout(() => { if (notesChip === chip) hideNotesChip(); }, 6000);
+    notesChip = chip; setTimeout(() => { if (notesChip === chip) hideNotesChip(); }, 8000);
   }, 0);
 }, true);
+// Close the chip on a click elsewhere, the mouse wheel or Esc (not on page-driven scrolling, which the menus cause)
 window.addEventListener('mousedown', (e) => { if (notesChip && !notesChip.contains(e.target)) hideNotesChip(); }, true);
-window.addEventListener('scroll', hideNotesChip, true);
-window.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideNotesChip(); }, true);
+window.addEventListener('wheel', hideNotesChip, true);
+window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && e.isTrusted) hideNotesChip(); }, true);
 ipcRenderer.on('blackcat:system',(_event,policy)=>{
   const value={notifications:policy?.notifications!==false,notificationSound:policy?.notificationSound!==false,hostNotification:location.hostname==='web.telegram.org',managedMessageSound:policy?.managedMessageSound===true};
   webFrame.executeJavaScript(`(()=>{const value=${JSON.stringify(value)};const key='__blackcatNotificationPolicy';if(window[key]){window[key].value=value;if(!value.notifications)for(const n of window[key].open)n.close();return;}const state={value,open:new Set()};Object.defineProperty(window,key,{value:state});const Native=window.Notification;if(typeof Native!=='function')return;class QuietNotification extends EventTarget{constructor(title,options){super();this.title=String(title);this.body=options?.body||'';}close(){this.dispatchEvent(new Event('close'));}}const Wrapped=new Proxy(Native,{construct(target,args){if(state.value.managedMessageSound)window.dispatchEvent(new Event('blackcat:message-notification'));if(!state.value.notifications||state.value.hostNotification)return new QuietNotification(args[0],args[1]);const options={...(args[1]||{})};if(state.value.managedMessageSound||!state.value.notificationSound)options.silent=true;const item=Reflect.construct(target,[args[0],options]);state.open.add(item);item.addEventListener('close',()=>state.open.delete(item),{once:true});return item;},get(target,key){if(key==='permission'&&!state.value.notifications)return'denied';if(key==='requestPermission')return callback=>{if(!state.value.notifications){callback?.('denied');return Promise.resolve('denied');}return target.requestPermission(callback);};return Reflect.get(target,key,target);}});window.Notification=Wrapped;})()`).catch(()=>{});

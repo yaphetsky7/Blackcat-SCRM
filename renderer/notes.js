@@ -6,8 +6,9 @@
   const transitions=new Map();
   let selected = null; let renderedKey = null; let requestEpoch = 0;
   const keyOf = (accountId, chatKey) => JSON.stringify([accountId, chatKey]);
-  // Saved messages and pictures ("保存到备注"), listed under the note of the open conversation
-  window.I18N?.extend({ '已保存的消息': 'Saved messages', '在聊天里右键消息或图片 → 保存到备注。': 'Right-click a message or image in the chat → Save to notes.', '已保存到备注': 'Saved to notes', '删除': 'Delete', '图片': 'Image', '还没有保存的消息。': 'Nothing saved yet.', '影片': 'Video', '写备注…': 'Add a note…', '在聊天里右键消息、图片或影片 → 保存到备注。': 'Right-click a message, image or video in the chat → Save to notes.' });
+  // Saved messages, pictures, videos, voice notes and files ("保存到备注"), listed under the note of the open conversation
+  window.I18N?.extend({ '已保存的消息': 'Saved messages', '在聊天里右键消息或图片 → 保存到备注。': 'Right-click a message or image in the chat → Save to notes.', '已保存到备注': 'Saved to notes', '删除': 'Delete', '图片': 'Image', '还没有保存的消息。': 'Nothing saved yet.', '影片': 'Video', '写备注…': 'Add a note…', '在聊天里右键消息、图片或影片 → 保存到备注。': 'Right-click a message, image or video in the chat → Save to notes.', '语音': 'Voice note', '文件': 'File', '点击打开': 'Click to open', '在聊天里右键消息、图片、影片、语音或文件 → 保存到备注。': 'Right-click a message, image, video, voice note or file in the chat → Save to notes.' });
+  const sizeText = (n) => (n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB');
   const clips = new Map(), clipsLoading = new Set(); let clipsDrawn = ''; const clipList = document.getElementById('notes-clips-list');
   function drawClips() {
     const box = document.getElementById('notes-clips'), entry = selected; box.hidden = !entry;
@@ -26,8 +27,10 @@
       meta.append(del); el.append(meta);
       const openFile = () => window.api.clipOpen({ accountId: entry.accountId, chatKey: entry.chatKey, id: item.id }).then((r) => { if (!r?.ok) toast(r?.error || '无法打开文件', true); });
       if (item.videoSrc) { const video = document.createElement('video'); video.src = item.videoSrc; if (item.src) video.poster = item.src; video.controls = true; video.preload = 'metadata'; video.title = t('影片'); video.addEventListener('dblclick', openFile); el.append(video); }
+      else if (item.audioSrc) { const audio = document.createElement('audio'); audio.src = item.audioSrc; audio.controls = true; audio.preload = 'metadata'; audio.title = t('语音'); el.append(audio); }
+      else if (item.fileSrc) { const file = document.createElement('button'); file.type = 'button'; file.className = 'note-clip-file'; file.title = t('点击打开'); file.textContent = '📄 ' + (item.fileName || t('文件')) + (item.size ? ' · ' + sizeText(item.size) : ''); file.addEventListener('click', openFile); el.append(file); }
       else if (item.src) { const img = document.createElement('img'); img.src = item.src; img.alt = t('图片'); img.title = t('图片'); img.addEventListener('click', openFile); el.append(img); }
-      if (item.text) { const text = document.createElement('div'); text.className = 'note-clip-text'; text.textContent = item.text; text.addEventListener('click', () => text.classList.toggle('open')); el.append(text); }
+      if (item.text && item.text !== item.fileName) { const text = document.createElement('div'); text.className = 'note-clip-text'; text.textContent = item.text; text.addEventListener('click', () => text.classList.toggle('open')); el.append(text); }
       // Your own words about this item ("写备注"), saved a moment after you stop typing
       const memo = document.createElement('textarea'); memo.className = 'note-clip-memo'; memo.rows = 1; memo.placeholder = t('写备注…'); memo.value = item.memo || '';
       let memoTimer = null; const saveMemo = async () => { clearTimeout(memoTimer); if ((item.memo || '') === memo.value) return; const r = await window.api.clipUpdate({ accountId: entry.accountId, chatKey: entry.chatKey, id: item.id, memo: memo.value }); if (!r?.ok) return toast(r?.error || '备注未保存，请重试', true); item.memo = r.data.memo; };
@@ -41,7 +44,7 @@
     if (data?.error) return toast(data.error, true);
     const context = contexts.get(accountId);
     if (!context?.key || context.ambiguous) return toast(t('打开一个对话，即可添加备注。'), true);
-    const r = await window.api.clipAdd({ accountId, chatKey: context.key, title: context.title, kind: data.kind, text: data.text, author: data.author, time: data.time, imageData: data.imageData, videoBytes: data.videoBytes, mime: data.mime });
+    const r = await window.api.clipAdd({ accountId, chatKey: context.key, title: context.title, kind: data.kind, text: data.text, author: data.author, time: data.time, imageData: data.imageData, videoBytes: data.videoBytes, audioBytes: data.audioBytes, fileToken: data.fileToken, mime: data.mime });
     if (!r?.ok) return toast(r?.error || '保存失败', true);
     const k = keyOf(accountId, context.key); if (clips.has(k)) clips.set(k, [...clips.get(k), r.data]);
     toast(t('已保存到备注')); if (selected?.key === k) drawClips();
