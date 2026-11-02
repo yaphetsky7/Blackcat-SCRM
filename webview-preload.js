@@ -1609,9 +1609,20 @@ const messageId = (root) => root?.getAttribute('data-id') || root?.id || '';
 const pictureAt = (x, y) => document.elementsFromPoint(x, y).find((el) => /^(IMG|VIDEO)$/.test(el.tagName) && (el.naturalWidth || el.videoWidth || el.width || 0) >= 60 && !el.closest('[class*="avatar" i]'));
 const bigPicture = (root) => [...root.querySelectorAll('img, video')].find((i) => (i.naturalWidth || i.videoWidth || 0) >= 60 && !i.closest('[class*="avatar" i], [class*="emoji" i], [class*="reaction" i]'));
 const looksLikeVoice = (root) => !!root.querySelector('[aria-label="Voice message"], [aria-label*="voice message" i], [aria-label*="语音"], [data-icon*="ptt"], [data-icon*="audio-play"], .Audio.voice, .Audio [class*="waveform" i], [class*="voice" i]');
-const looksLikeVideo = (root) => !!root.querySelector('video, [data-icon*="media-play"], [data-icon*="msg-video"], [data-icon*="media-gif"], [aria-label*="Play video" i], [aria-label*="播放影片"], .message-media-duration');
-const downloadControl = (root) => root.querySelector('[aria-label^="Download" i], [title^="Download" i], [aria-label*="下载"], [title*="下载"], [data-icon*="download"], .File .file-icon, .File');
-const looksLikeFile = (root) => !looksLikeVoice(root) && !!(root.querySelector('.File, [data-icon*="document"], [data-icon^="doc-"], [aria-label*="document" i], [title*=".pdf" i], [title*=".doc" i], [title*=".xls" i], [title*=".zip" i]') || (downloadControl(root) && !bigPicture(root)));
+// Icon names: older WhatsApp uses data-icon="…", the new layout <svg><title>ic-…</title> (e.g. ic-videocam-filled)
+const iconNames = (root) => [...root.querySelectorAll('[data-icon], svg title')].map((n) => (n.tagName.toLowerCase() === 'title' ? n.textContent : n.getAttribute('data-icon'))).join(' ');
+const looksLikeVideo = (root) => !!root.querySelector('video, [aria-label*="Play video" i], [aria-label*="播放影片"], .message-media-duration') || /videocam|msg-video|media-play|play-arrow|media-gif|ic-gif/i.test(iconNames(root));
+const downloadControl = (root) => root.querySelector('[aria-label^="Download" i], [title^="Download" i], [aria-label*="下载"], [title*="下载"], [data-icon*="download"], .File .file-icon, .File') || [...root.querySelectorAll('svg title')].find((t) => /download/i.test(t.textContent))?.closest('svg') || null;
+const looksLikeFile = (root) => !looksLikeVoice(root) && !!(root.querySelector('.File, [aria-label*="document" i], [title*=".pdf" i], [title*=".doc" i], [title*=".xls" i], [title*=".zip" i]') || /document|doc-|ic-(pdf|doc|xls|ppt|zip|file|attach)|file-/i.test(iconNames(root)) || (downloadControl(root) && !bigPicture(root)));
+// WhatsApp's new layout draws a video's preview as a background picture, not an <img>
+async function posterOf(root) {
+  const urls = [...root.querySelectorAll('[style*="background-image"]')].map((el) => /url\("?([^")]+)"?\)/.exec(el.getAttribute('style') || '')?.[1]).filter((u) => /^(data:image|blob:|https:)/.test(u || ''));
+  for (const u of urls.reverse()) {
+    const img = new Image(); img.src = u;
+    try { await img.decode(); const frame = frameOf(img); if (frame) return frame; } catch {}
+  }
+  return '';
+}
 const kindOf = (root, media) => (looksLikeVoice(root) ? 'voice' : looksLikeVideo(root) ? 'video' : media ? 'image' : looksLikeFile(root) ? 'file' : 'text');
 // The page's own "Download" in the menu it opened for this message (Telegram and WhatsApp both offer one for media);
 // using it saves a video that was never played
@@ -1711,6 +1722,19 @@ const waitForDownload = (token, wait) => new Promise((resolve, reject) => {
   function done(_e, r) { if (r?.token !== token) return; clearTimeout(timer); ipcRenderer.removeListener('clips:download-done', done); r.error ? reject(new Error(r.error)) : resolve(r); }
   ipcRenderer.on('clips:download-done', done);
 });
+// Close the page's own menu: Esc goes to what has focus (WhatsApp listens on the focused menu item)
+const closePageMenu = () => (document.activeElement || document).dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true }));
+// The page's "Download" menu item; when its menu has already closed, open it again on the same message
+let reopeningMenu = false;
+async function menuDownloadItem(target, x, y) {
+  let item = pageDownloadItem();
+  if (item || !target?.isConnected) return item;
+  reopeningMenu = true;
+  try { target.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, view: window, button: 2, clientX: x, clientY: y })); } finally { reopeningMenu = false; }
+  for (let i = 0; i < 15 && !item; i++) { await new Promise((r) => setTimeout(r, 100)); item = pageDownloadItem(); }
+  if (!item) closePageMenu();
+  return item;
+}
 // Click the page's own download (a button on the message or "Download" in its menu) and catch that one download.
 // A video can take minutes: Telegram first loads the whole file, then hands it over.
 async function pageDownload(control, long) {
@@ -1747,9 +1771,11 @@ async function captureForNotes(request) {
     } else if (kind === 'video') {
       const video = (media?.tagName === 'VIDEO' && media) || root.querySelector('video'), src = video?.currentSrc || video?.src || '';
       try { out.imageData = video?.readyState >= 2 ? frameOf(video) : (media?.tagName === 'IMG' ? frameOf(media) : ''); } catch { out.imageData = ''; }
+      if (!out.imageData) out.imageData = await posterOf(root);
       // Best: the page's own "Download" (no need to play the video first)
-      if (request.downloadItem) {
-        const got = await pageDownload(request.downloadItem, true);
+      const item = request.downloadItem?.isConnected ? request.downloadItem : request.target ? await menuDownloadItem(request.target, x, y) : null;
+      if (item) {
+        const got = await pageDownload(item, true);
         Object.assign(out, { fileToken: got.token, mime: got.mime || 'video/mp4' });
         out.text = String(out.text || '').slice(0, 20000);
         return ipcRenderer.sendToHost('notes:captured', out);
@@ -1774,7 +1800,8 @@ async function captureForNotes(request) {
       out.audioBytes = new Uint8Array(await blob.arrayBuffer()); out.mime = blob.type || 'audio/ogg';
       out.text = out.text || (root.querySelector('[aria-label*="Voice message" i]') ? '' : '');
     } else if (kind === 'file') {
-      const control = downloadControl(root) || request.downloadItem;
+      // "Download" in the page's own menu is the surest; the button on the message may only open the file
+      const control = (request.downloadItem?.isConnected && request.downloadItem) || (request.target && await menuDownloadItem(request.target, x, y)) || downloadControl(root);
       if (!control) throw new Error('没有找到这个文件的下载按钮');
       const got = await pageDownload(control, false);
       Object.assign(out, { fileToken: got.token, text: out.text || got.name || '', fileName: got.name });
@@ -1789,6 +1816,7 @@ ipcRenderer.on('notes:capture', (_event, request) => captureForNotes(request));
 let notesChip = null;
 const hideNotesChip = () => { notesChip?.remove(); notesChip = null; };
 window.addEventListener('contextmenu', (event) => {
+  if (reopeningMenu) return;
   hideNotesChip();
   const x = event.clientX, y = event.clientY, target = event.target;
   setTimeout(() => {
@@ -1797,24 +1825,34 @@ window.addEventListener('contextmenu', (event) => {
     const selection = String(window.getSelection() || '').slice(0, 20000), media = pictureAt(x, y) || bigPicture(root), kind = selection ? 'text' : kindOf(root, media);
     const chip = document.createElement('div'); chip.className = 'wam-float wam-notes-chip';
     chip.style.cssText = 'position:fixed;z-index:2147483647;display:flex;gap:4px;padding:4px;background:#fff;border:1px solid rgba(0,0,0,.12);border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.2);font:13px/1.2 "Segoe UI","Microsoft YaHei",sans-serif';
-    let menuItem = null; setTimeout(() => { menuItem = pageDownloadItem(); }, 120);
-    const b = document.createElement('button'); b.type = 'button';
-    b.textContent = selection ? '📌 保存选中文字' : { voice: '🎤 保存语音到备注', video: '🎬 保存影片到备注', image: '🖼 保存图片到备注', file: '📄 保存文件到备注' }[kind] || '📌 保存到备注';
-    b.style.cssText = 'border:0;border-radius:6px;padding:6px 10px;background:#3370ff;color:#fff;cursor:pointer;font:inherit;white-space:nowrap';
-    b.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); }, true);
-    b.addEventListener('click', (e) => {
-      e.preventDefault(); e.stopPropagation(); hideNotesChip();
-      // A video (or file) goes through "Download" in the page's own menu when it has one; that click also closes the menu
-      const downloadItem = kind === 'video' || kind === 'file' ? (pageDownloadItem() || (menuItem?.isConnected ? menuItem : null)) : null;
-      captureForNotes({ kind, x, y, selection, root, target, media, downloadItem });
-      // Otherwise close the page's own menu that is still open
-      if (!downloadItem) document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }));
-    }, true);
-    chip.append(b); document.documentElement.append(chip);
+    let menuItem = null;
+    const button = (label, as) => {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = label;
+      b.style.cssText = 'border:0;border-radius:6px;padding:6px 10px;background:#3370ff;color:#fff;cursor:pointer;font:inherit;white-space:nowrap';
+      b.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); }, true);
+      b.addEventListener('click', (e) => {
+        e.preventDefault(); e.stopPropagation(); hideNotesChip();
+        // A video (or file) goes through "Download" in the page's own menu when it has one; that click also closes the menu
+        const downloadItem = as === 'video' || as === 'file' ? (pageDownloadItem() || (menuItem?.isConnected ? menuItem : null)) : null;
+        captureForNotes({ kind: as, x, y, selection, root, target, media, downloadItem });
+        // Otherwise close the page's own menu that is still open
+        if (!downloadItem) closePageMenu();
+      }, true);
+      chip.append(b);
+    };
     // Sit just above-left of the click, where the platform's own menu (which opens down-right) does not cover it
-    const r = chip.getBoundingClientRect();
-    chip.style.left = Math.max(4, Math.min(innerWidth - r.width - 4, x - r.width - 6)) + 'px';
-    chip.style.top = Math.max(4, Math.min(innerHeight - r.height - 4, y - r.height - 6)) + 'px';
+    const place = () => {
+      const r = chip.getBoundingClientRect();
+      chip.style.left = Math.max(4, Math.min(innerWidth - r.width - 4, x - r.width - 6)) + 'px';
+      chip.style.top = Math.max(4, Math.min(innerHeight - r.height - 4, y - r.height - 6)) + 'px';
+    };
+    button(selection ? '📌 保存选中文字' : { voice: '🎤 保存语音到备注', video: '🎬 保存影片到备注', image: '🖼 保存图片到备注', file: '📄 保存文件到备注' }[kind] || '📌 保存到备注', kind);
+    document.documentElement.append(chip); place();
+    // A message the page offers to download but that is not recognised as media (e.g. a document in a new layout) can be saved as a file
+    setTimeout(() => {
+      menuItem = pageDownloadItem();
+      if (menuItem && kind === 'text' && !selection && notesChip === chip) { button('📄 保存文件到备注', 'file'); place(); }
+    }, 300);
     notesChip = chip; setTimeout(() => { if (notesChip === chip) hideNotesChip(); }, 8000);
   }, 0);
 }, true);

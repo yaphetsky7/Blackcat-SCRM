@@ -49,8 +49,9 @@
     if (!context?.key || context.ambiguous) return toast(t('打开一个对话，即可添加备注。'), true);
     const r = await window.api.clipAdd({ accountId, chatKey: context.key, title: context.title, kind: data.kind, text: data.text, author: data.author, time: data.time, imageData: data.imageData, videoBytes: data.videoBytes, audioBytes: data.audioBytes, fileToken: data.fileToken, mime: data.mime });
     if (!r?.ok) return toast(r?.error || '保存失败', true);
-    const k = keyOf(accountId, context.key); if (clips.has(k)) clips.set(k, [...clips.get(k), r.data]);
-    toast(t('已保存到备注')); if (selected?.key === k) drawClips();
+    // An album comes back as several items
+    const k = keyOf(accountId, context.key), added = [].concat(r.data); if (clips.has(k)) clips.set(k, [...clips.get(k), ...added]);
+    toast(added.length > 1 ? t('已保存到备注') + ' (' + added.length + ')' : t('已保存到备注')); if (selected?.key === k) drawClips();
   }
   function draw() {
     drawClips();
