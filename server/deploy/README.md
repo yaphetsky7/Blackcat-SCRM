@@ -26,6 +26,9 @@ Windows 客户端继续在客户电脑运行。这里只迁移登录、配套、
 后台绑定 127.0.0.1:8787，由 Caddy 提供 HTTPS。Claude Key 未配置前，账号服务可以启动，点数 AI 会明确返回未配置错误。
 不要将根目录、数据库目录或配置目录作为公开静态文件目录。
 
+Claude Key 由管理员在自己的交互终端输入：先将 configure-claude.sh 安装为 /usr/local/sbin/blackcat-configure-claude（root 所有、0750），再手动运行。
+输入不会回显；脚本不会把 Key 放进命令行、聊天或日志，只会写入服务器上的 0600 配置文件。
+
 ## 从 Windows 迁移
 
 先保留旧后台和源文件。通过 SQLite Backup API 导出一致性快照，不要只复制仍在写入的 .db 而漏掉 WAL。
