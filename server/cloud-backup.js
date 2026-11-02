@@ -23,6 +23,7 @@ function createCloudBackup({ store, storage = createR2(), env = process.env }) {
     run('INSERT INTO cloud_operations VALUES(?,?,1) ON CONFLICT(month,kind) DO UPDATE SET count=count+1', month, kind);
     if (one('SELECT count FROM cloud_operations WHERE month=? AND kind=?', month, kind).count > limit) throw Object.assign(Error('R2 试用请求额度已达保护上限，本地资料保留，云端操作暂时暂停'), { status: 429 });
   }
+  const storageCall = require('./storage-retry').createStorageRetry({ beforeAttempt: kind => { if (kind === 'A' || kind === 'B') operation(kind); }, report: event => console.warn('cloud-storage-retry', JSON.stringify(event)) });
   function state(user) {
     return { configured: storage.configured, eligible: !!quota(user), quotaBytes: quota(user), usedBytes: usage(user), trial: globalLimit <= 10e9, sharedLimitBytes: globalLimit, sharedUsedBytes: usedAll(), snapshots: db.prepare('SELECT id,device,label,created,bytes FROM cloud_snapshots WHERE user_id=? ORDER BY created DESC').all(user.id) };
   }
@@ -43,9 +44,8 @@ function createCloudBackup({ store, storage = createR2(), env = process.env }) {
     if (old && old.size !== bytes.length) throw Error('分块大小不一致');
     busy.add(lock);
     try {
-      operation('A');
-      if (!old) run('INSERT INTO cloud_chunks VALUES(?,?,?,?,?)', user.id, h, bytes.length, 'pending', Date.now());
-      await storage.put(key(user, h), bytes);
+      let reserved = !!old;
+      await storageCall('A', () => { if (!reserved) { run('INSERT INTO cloud_chunks VALUES(?,?,?,?,?)', user.id, h, bytes.length, 'pending', Date.now()); reserved = true; } return storage.put(key(user, h), bytes); });
       run("UPDATE cloud_chunks SET status='ready' WHERE user_id=? AND hash=?", user.id, h);
       return { exists: false };
     } finally { busy.delete(lock); }
@@ -66,9 +66,8 @@ function createCloudBackup({ store, storage = createR2(), env = process.env }) {
     const locks = [...new Set(m.files.flatMap(f => f.chunks.map(c => user.id + ':' + c.hash)))];
     locks.forEach(k => busy.add(k));
     try {
-      operation('A');
-      run('INSERT INTO cloud_manifests VALUES(?,?,?,?)', id, user.id, portable.length, created);
-      await storage.put('v1/' + user.id + '/snapshots/' + id + '.json', portable);
+      let reserved = false;
+      await storageCall('A', () => { if (!reserved) { run('INSERT INTO cloud_manifests VALUES(?,?,?,?)', id, user.id, portable.length, created); reserved = true; } return storage.put('v1/' + user.id + '/snapshots/' + id + '.json', portable); });
       if (body.primary) run('INSERT INTO cloud_primary_points VALUES(?,?,?,?,?,?,?,?)', id, user.id, session.device_id, label, created, bytes, JSON.stringify(m), 'pending');
       else run('INSERT INTO cloud_snapshots VALUES(?,?,?,?,?,?,?)', id, user.id, session.device_id, label, created, bytes, JSON.stringify(m));
       // Daily recovery history per computer. Other computers' recovery points are not replaced.
@@ -83,7 +82,7 @@ function createCloudBackup({ store, storage = createR2(), env = process.env }) {
   }
   async function get(user, h) {
     if (!isHash(h) || !one("SELECT 1 FROM cloud_chunks WHERE user_id=? AND hash=? AND status='ready'", user.id, h)) throw Object.assign(Error('找不到备份分块'), { status: 404 });
-    operation('B'); const bytes = await storage.get(key(user, h));
+    const bytes = await storageCall('B', () => storage.get(key(user, h)));
     if (bytes.length > CHUNK || hash(bytes) !== h) throw Error('云端分块校验失败，请联系管理员');
     return bytes;
   }
@@ -97,12 +96,12 @@ function createCloudBackup({ store, storage = createR2(), env = process.env }) {
       // A day protects uploads from another computer that has not committed its snapshot yet.
       if (refs.has(row.hash) || busy.has(user.id + ':' + row.hash) || Date.now() - row.created < 864e5) continue;
       busy.add(user.id + ':' + row.hash);
-      try { await storage.delete(key(user, row.hash)); run('DELETE FROM cloud_chunks WHERE user_id=? AND hash=?', user.id, row.hash); removed++; }
+      try { await storageCall('delete', () => storage.delete(key(user, row.hash))); run('DELETE FROM cloud_chunks WHERE user_id=? AND hash=?', user.id, row.hash); removed++; }
       finally { busy.delete(user.id + ':' + row.hash); }
     }
     for (const row of db.prepare('SELECT * FROM cloud_manifests WHERE user_id=? AND created<?').all(user.id, Date.now() - 864e5)) {
       if (one('SELECT 1 FROM cloud_snapshots WHERE id=?', row.id) || one('SELECT 1 FROM cloud_primary_points WHERE id=?', row.id)) continue;
-      await storage.delete('v1/' + user.id + '/snapshots/' + row.id + '.json');
+      await storageCall('delete', () => storage.delete('v1/' + user.id + '/snapshots/' + row.id + '.json'));
       run('DELETE FROM cloud_manifests WHERE id=? AND user_id=?', row.id, user.id); removed++;
     }
     return { removed };
