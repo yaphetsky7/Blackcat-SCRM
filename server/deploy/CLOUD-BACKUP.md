@@ -4,6 +4,12 @@ Business 每个黑猫客户账号共用 100 GB；Enterprise 共用 500 GB。Star
 
 ## 开通
 
+当前正式部署使用 Cloudflare Worker 的私有 R2 binding：网站 Worker 的 `BLACKCAT_BACKUPS` 绑定同名 bucket，`/api/private-backup` 只接受后端的高熵访问密钥。后端 `/etc/blackcat-server/r2.env` 存放 `R2_GATEWAY_URL` 与 `R2_GATEWAY_SECRET`（0600）；Worker 配置只含该密钥的 SHA-256 验证值，既不含原密钥，也不需要 R2 S3 API 凭据。该入口不开放目录列表，未认证请求返回 404。网站静态页面和网站 AI 不会获得备份访问密钥。
+
+这条通路同时消耗 Cloudflare Worker 请求额度；免费 Worker 达到自身额度时可能暂停服务。R2 请求与容量保护仍由后端执行，不能将 R2 免费操作额度视为 Worker 的免费额度。
+
+如改用 S3 直连，可使用下列流程；两种方式任选其一，客户端不需要改变：
+
 1. 在 Cloudflare 完成 R2 开通，创建专用、私有、Standard bucket，例如 `blackcat-cloud-backups`。不要开启 r2.dev 或公开域名访问。
 2. 为此 bucket 创建仅限该 bucket 的 Object Read & Write S3 凭据。不要使用账户管理级权限。凭据仅在终端输入，禁止放入客户端、截图、聊天、Git 或网站。
 3. 服务器更新到此版本，包含根目录 `cloud-format.js`、server 目录全部源码，服务引用 `/etc/blackcat-server/r2.env`。
