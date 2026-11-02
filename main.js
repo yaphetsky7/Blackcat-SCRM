@@ -221,7 +221,7 @@ app.on('web-contents-created', (_e, contents) => {
       const capture = (kind) => () => { if (!contents.isDestroyed()) contents.send('notes:capture', { kind, x: params.x, y: params.y, selection: String(params.selectionText || '').slice(0, 20000) }); };
       if (params.mediaType === 'image') items.push({ label: '保存图片到备注 / Save image to notes', click: capture('image') });
       if (params.mediaType === 'video') items.push({ label: '保存影片到备注 / Save video to notes', click: capture('video') });
-      items.push({ label: params.selectionText ? '保存选中文字到备注 / Save selection to notes' : '保存这条消息到备注 / Save message to notes', click: capture('text') });
+      items.push({ label: params.selectionText ? '保存选中文字到备注 / Save selection to notes' : '保存到备注 / Save to notes', click: capture('text') });
     }
     Menu.buildFromTemplate(items).popup({ window: win && !win.isDestroyed() ? win : undefined });
   });

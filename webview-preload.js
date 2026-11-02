@@ -1632,20 +1632,11 @@ const kindOf = (root, media) => (looksLikeVoice(root) ? 'voice' : looksLikeVideo
 const DOWNLOAD_WORDS = /^(download|下载|下載|save as|另存为|lưu|unduh|скачать)/i;
 const pageDownloadItem = () => [...document.querySelectorAll('[role="menuitem"], .MenuItem, [role="menu"] [role="button"], [role="application"] li, [role="application"] [role="button"]')]
   .find((el) => shown(el) && !el.closest('.wam-notes-chip') && (DOWNLOAD_WORDS.test((el.getAttribute('aria-label') || el.textContent || '').trim()) || !!el.querySelector('.icon-download, [data-icon*="download"]')));
-// The Download button of the page's full-screen photo/video viewer (outside every message); it downloads just the one shown
-const viewerDownloadButton = () => [...document.querySelectorAll('[aria-label], [title], svg title')]
-  .map((el) => (el.tagName.toLowerCase() === 'title'
-    ? (/download/i.test(el.textContent) ? el.closest('button, [role="button"]') : null)
-    : (/^(download|下载|下載)$/i.test((el.getAttribute('aria-label') || el.getAttribute('title') || '').trim()) ? el.closest('button, [role="button"]') || el : null)))
-  .find((el) => el && shown(el) && !messageAt(el) && !el.closest('.wam-notes-chip, [role="menu"], [role="application"]'));
-// The big photo or video the viewer shows
-const viewerPicture = () => [...document.querySelectorAll('img, video')].filter((el) => !messageAt(el) && el.getBoundingClientRect().width >= 200 && (el.naturalWidth || el.videoWidth) >= 200).pop() || null;
 // One photo or video of an album (several in one message, e.g. WhatsApp's 2×2 grid): each is its own clickable tile
-function albumTile(root, target) {
+const albumTiles = (root) => {
   const tiles = [...root.querySelectorAll('[role="button"]')].filter((t) => t.querySelector('[style*="background-image"], img') && !t.querySelector(':scope [role="button"] [style*="background-image"], :scope [role="button"] img') && t.getBoundingClientRect().width >= 60);
-  if (tiles.length < 2) return null;
-  return tiles.find((t) => t.contains(target)) || null;
-}
+  return tiles.length >= 2 ? tiles : [];
+};
 // Media shown from another site (Facebook's pictures, videos and files) that the page may not copy: the app downloads it with the chat's own sign-in
 const fetchByApp = async (url) => { const r = await ipcRenderer.invoke('clips:fetch-url', { url }); if (!r?.ok) throw new Error(r?.error || '无法下载'); return r.data; };
 // Message text without menus, buttons or icon-font names (Telegram draws its menu inside the message)
@@ -1779,8 +1770,10 @@ async function captureForNotes(request) {
     const x = Number(request.x) || 0, y = Number(request.y) || 0, at = request.target || document.elementFromPoint(x, y);
     if (!at) throw new Error('没有找到这条消息');
     // Selected text can be saved from anywhere; otherwise the click must be on a message (an empty stand-in keeps the lookups below simple)
-    // A photo or video open in the page's full-screen viewer is outside any message but can be saved as it is
-    const viewerMedia = !request.root && !messageAt(at) && /^(image|video)$/.test(request.kind) ? pictureAt(x, y) : null;
+    // A photo or video open in the page's full-screen viewer is outside any message but can be saved as it is (WhatsApp lays
+    // a clear layer over it, so the app's menu only offers "save to notes"; the big picture under the click is what is meant)
+    const bigAt = !request.root && !messageAt(at) && !request.selection ? (request.media || pictureAt(x, y)) : null;
+    const viewerMedia = bigAt && bigAt.getBoundingClientRect().width >= 200 ? bigAt : null;
     if (!request.root && !messageAt(at) && !viewerMedia && (!request.selection || request.kind !== 'text')) throw new Error('请在打开的对话里右键某条消息');
     const root = request.root || messageAt(at) || document.createElement('div');
     const ad = adapter(), parts = ad ? [...root.querySelectorAll(ad.messages)].filter((n) => !ad.skip?.(n)).map(cleanText).filter(Boolean) : [];
@@ -1789,24 +1782,25 @@ async function captureForNotes(request) {
     const time = pre?.[1] || root.querySelector('time')?.getAttribute('datetime') || (root.querySelector('.message-time, .time')?.textContent || '').trim();
     const media = request.media || (request.root ? null : pictureAt(x, y)) || bigPicture(root);
     let kind = request.kind;
+    if (viewerMedia && (kind === 'text' || !request.kind)) kind = viewerMedia.tagName === 'VIDEO' ? 'video' : 'image';
     // "保存到备注" on a photo, video, voice note or file without words saves that item itself
     // (a message with words stays a text message; a forwarded video's header is not its words)
     if (kind === 'text' && !request.selection && !parts.length) kind = kindOf(root, media);
     const out = { kind, text: request.selection || parts.join('\n'), author: author.slice(0, 120), time: String(time).slice(0, 60), imageData: '' };
     const send = () => { out.text = String(out.text || '').slice(0, 20000); ipcRenderer.sendToHost('notes:captured', out); };
-    // A photo or video in the full-screen viewer, or one tile of an album opened in it: the viewer's Download gives just that one
+    const inViewer = !!viewerMedia;
+    // One tile of an album: the page's menu downloads the whole album (WhatsApp: a ZIP); the app keeps only this one,
+    // matched by its length (e.g. 0:16) or its place in the album. The viewer is not opened.
     const tile = request.tile?.isConnected ? request.tile : null;
-    const inViewer = !!viewerMedia || (!request.root && !messageAt(at) && !!request.media);
-    if ((inViewer || tile) && (kind === 'video' || kind === 'image')) {
-      // (after the page's menu has closed)
-      if (tile) { await new Promise((r) => setTimeout(r, 250)); press(tile); }
-      const shownMedia = kind !== 'image' ? null : tile ? await waitFor(viewerPicture, 4000) : (request.media || viewerMedia);
-      const button = kind === 'video' ? await waitFor(viewerDownloadButton, tile ? 4000 : 500) : null;
-      try {
-        if (button) { const got = await pageDownload(button, true); Object.assign(out, { fileToken: got.token, mime: got.mime || 'video/mp4' }); return send(); }
-        if (kind === 'image' && shownMedia) { await pictureInto(out, shownMedia); return send(); }
-      } finally { if (tile) closePageMenu(); }
-      if (tile) throw new Error(kind === 'video' ? '没有找到播放画面的下载按钮，请点开影片后在播放画面右键保存' : '图片还没载入完成，请稍后再试');
+    if (tile && (kind === 'video' || kind === 'image')) {
+      const item = (request.downloadItem?.isConnected && request.downloadItem) || (request.target && await menuDownloadItem(request.target, x, y));
+      if (!item) throw new Error('没有找到下载，请再右键一次');
+      const length = (tile.textContent.match(/(\d+):(\d\d)/) || []).slice(1).map(Number);
+      out.pick = { index: request.tiles.indexOf(tile), count: request.tiles.length, seconds: length.length ? length[0] * 60 + length[1] : 0 };
+      try { out.imageData = await posterOf(tile); } catch {}
+      const got = await pageDownload(item, true);
+      Object.assign(out, { fileToken: got.token, mime: got.mime || '' });
+      return send();
     }
     if (kind === 'image') {
       if (!media) throw new Error('没有找到图片，请等图片载入完成');
@@ -1815,8 +1809,9 @@ async function captureForNotes(request) {
       const video = (media?.tagName === 'VIDEO' && media) || root.querySelector('video'), src = video?.currentSrc || video?.src || '';
       try { out.imageData = video?.readyState >= 2 ? frameOf(video) : (media?.tagName === 'IMG' ? frameOf(media) : ''); } catch { out.imageData = ''; }
       if (!out.imageData) out.imageData = await posterOf(root);
-      // Best: the page's own "Download" (no need to play the video first)
-      const item = request.downloadItem?.isConnected ? request.downloadItem : request.target ? await menuDownloadItem(request.target, x, y) : null;
+      // Best: the page's own "Download" (no need to play the video first). Not in the viewer: the video playing there is
+      // already the whole file, and opening a menu (or Esc) there would close the viewer.
+      const item = inViewer ? null : request.downloadItem?.isConnected ? request.downloadItem : request.target ? await menuDownloadItem(request.target, x, y) : null;
       if (item) {
         const got = await pageDownload(item, true);
         Object.assign(out, { fileToken: got.token, mime: got.mime || 'video/mp4' });
@@ -1860,7 +1855,13 @@ async function captureForNotes(request) {
     ipcRenderer.sendToHost('notes:captured', out);
   } catch (error) { ipcRenderer.sendToHost('notes:captured', { error: error.message === 'The operation is insecure.' ? '这个文件无法保存（平台限制）' : error.message }); }
 }
-ipcRenderer.on('notes:capture', (_event, request) => captureForNotes(request));
+// The app's own menu (pages that keep the normal right-click, e.g. Messenger) reports a position that can be off from
+// the page's (it may count from the app window); use where the right-click really happened in the page
+let lastRightClick = null;
+ipcRenderer.on('notes:capture', (_event, request) => {
+  const r = lastRightClick && Date.now() - lastRightClick.at < 30000 ? lastRightClick : null;
+  captureForNotes(r ? { ...request, x: r.x, y: r.y, target: r.target, media: r.media } : request);
+});
 // WhatsApp and Telegram replace the right-click menu with their own, so the app's menu never shows. When a page does
 // that on a message, a small save chip appears beside the click as well; the page's own menu keeps working.
 let notesChip = null;
@@ -1869,6 +1870,7 @@ window.addEventListener('contextmenu', (event) => {
   if (reopeningMenu) return;
   hideNotesChip();
   const x = event.clientX, y = event.clientY, target = event.target;
+  lastRightClick = { x, y, target, media: pictureAt(x, y) || null, at: Date.now() };
   setTimeout(() => {
     const root = messageAt(target);
     // Also on the big photo or video of the page's full-screen viewer
@@ -1876,7 +1878,7 @@ window.addEventListener('contextmenu', (event) => {
     if (!event.defaultPrevented || !adapter() || (!root && !viewer)) return;
     const selection = String(window.getSelection() || '').slice(0, 20000), media = viewer || pictureAt(x, y) || bigPicture(root);
     // One tile of an album saves just that photo or video
-    const tile = root && !selection ? albumTile(root, target) : null;
+    const tiles = root && !selection ? albumTiles(root) : [], tile = tiles.find((t) => t.contains(target)) || null;
     const kind = viewer ? (viewer.tagName === 'VIDEO' ? 'video' : 'image') : selection ? 'text' : tile ? (/videocam|play-arrow|media-play|msg-video/i.test(iconNames(tile)) ? 'video' : 'image') : kindOf(root, media);
     const chip = document.createElement('div'); chip.className = 'wam-float wam-notes-chip';
     chip.style.cssText = 'position:fixed;z-index:2147483647;display:flex;gap:4px;padding:4px;background:#fff;border:1px solid rgba(0,0,0,.12);border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.2);font:13px/1.2 "Segoe UI","Microsoft YaHei",sans-serif';
@@ -1888,11 +1890,11 @@ window.addEventListener('contextmenu', (event) => {
       b.addEventListener('click', (e) => {
         e.preventDefault(); e.stopPropagation(); hideNotesChip();
         // A video (or file) goes through "Download" in the page's own menu when it has one; that click also closes the menu
-        // (not for an album tile or the viewer: the menu's Download there gives every item of the album)
-        const downloadItem = !tile && !viewer && (as === 'video' || as === 'file') ? (pageDownloadItem() || (menuItem?.isConnected ? menuItem : null)) : null;
+        // (not in the viewer, which has no such menu; an album tile's photo goes through the album download too)
+        const downloadItem = !viewer && (as === 'video' || as === 'file' || tile) ? (pageDownloadItem() || (menuItem?.isConnected ? menuItem : null)) : null;
         // Otherwise close the page's own menu that is still open (never in the viewer: Esc would close the viewer itself)
         if (!downloadItem && !viewer) closePageMenu();
-        captureForNotes({ kind: as, x, y, selection, root, target, media, downloadItem, tile });
+        captureForNotes({ kind: as, x, y, selection, root, target, media, downloadItem, tile, tiles });
       }, true);
       chip.append(b);
     };

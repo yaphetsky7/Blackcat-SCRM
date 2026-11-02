@@ -12,6 +12,12 @@ const ALBUM_VIDEO = ['mp4', 'mov', 'webm', 'm4v', '3gp'], ALBUM_IMAGE = ['jpg', 
 // What a file really is, from its first bytes
 const sniff = (b) => (b.toString('latin1', 4, 8) === 'ftyp' ? (b.toString('latin1', 8, 12) === 'qt  ' ? 'mov' : 'mp4') : b[0] === 0xff && b[1] === 0xd8 ? 'jpg' : b.toString('hex', 0, 4) === '89504e47' ? 'png'
   : b.toString('latin1', 0, 4) === 'RIFF' && b.toString('latin1', 8, 12) === 'WEBP' ? 'webp' : b.toString('hex', 0, 4) === '1a45dfa3' ? 'webm' : '');
+// An MP4's length in seconds, from its movie header (mvhd)
+const mp4Seconds = (b) => {
+  const i = b.indexOf('mvhd');
+  if (i < 4 || i + 32 > b.length) return NaN;
+  return b[i + 4] === 1 ? Number(b.readBigUInt64BE(i + 28)) / b.readUInt32BE(i + 24) : b.readUInt32BE(i + 20) / b.readUInt32BE(i + 16);
+};
 const headOf = (file) => { const head = Buffer.alloc(16), fd = fs.openSync(file, 'r'); try { fs.readSync(fd, head, 0, 16, 0); } finally { fs.closeSync(fd); } return head; };
 const IMAGE_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 const AUDIO_TYPES = { 'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/webm': 'webm', 'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/aac': 'aac' };
@@ -75,9 +81,31 @@ function createClipsStore(dataDir, now = Date.now) {
       // By the name's ending, or by the content when the name has none
       const named = path.extname(entry.name).slice(1).toLowerCase().replace('jpeg', 'jpg');
       const ext = [...ALBUM_VIDEO, ...ALBUM_IMAGE].includes(named) ? named : sniff(bytes);
-      if (ext) parts.push({ kind: ALBUM_VIDEO.includes(ext) ? 'video' : 'image', name: storeBytes(bytes, ext), size: bytes.length });
+      if (ext) parts.push({ kind: ALBUM_VIDEO.includes(ext) ? 'video' : 'image', name: storeBytes(bytes, ext), size: bytes.length, seconds: ALBUM_VIDEO.includes(ext) ? mp4Seconds(bytes) : NaN });
     }
     return parts;
+  }
+  // The one album item that was right-clicked: the video of that length (the tile shows e.g. 0:16), else the one in that
+  // place of the album; none when unsure (then every item is kept)
+  function choose(parts, pick) {
+    const seconds = Number(pick.seconds) || 0, index = Number(pick.index), count = Number(pick.count);
+    if (seconds) {
+      const near = parts.filter((p) => p.kind === 'video' && Math.abs(p.seconds - seconds) <= 1.5);
+      if (near.length === 1) return near[0];
+    }
+    return parts.length === count && Number.isInteger(index) && parts[index] ? parts[index] : null;
+  }
+  async function addAlbum(r, text, got) {
+    let parts = await unpackAlbum(path.join(mediaDir, got.file));
+    drop(got.file);
+    const chosen = r.pick && typeof r.pick === 'object' ? choose(parts, r.pick) : null;
+    if (chosen) { for (const p of parts) if (p.name !== chosen.name) drop(p.name); parts = [chosen]; }
+    if (!parts.length) throw Error('相册里没有可保存的影片或图片');
+    const base = { text, author: String(r.author || '').slice(0, 120), time: String(r.time || '').slice(0, 60), title: String(r.title || '').slice(0, 200), savedAt: now() };
+    const poster = chosen?.kind === 'video' ? storePicture(r.imageData) : '';
+    const added = parts.map((p) => ({ id: crypto.randomUUID(), ...base, kind: p.kind, ...(p.kind === 'video' ? { video: p.name, size: p.size, ...(poster ? { image: poster } : {}) } : { image: p.name }) }));
+    clips.set(key(r.accountId, r.chatKey), [...(clips.get(key(r.accountId, r.chatKey)) || []), ...added].slice(-MAX_PER_CHAT)); save();
+    return added.map(view);
   }
   const isZip = (file) => headOf(file).subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
   const used = (name) => [...clips.values()].some((all) => all.some((i) => [i.image, i.video, i.audio, i.file].includes(name)));
@@ -85,23 +113,16 @@ function createClipsStore(dataDir, now = Date.now) {
   async function add(r) {
     check(r);
     const text = String(r.text || '').slice(0, 20000), kind = ['image', 'video', 'voice', 'file'].includes(r.kind) ? r.kind : 'text';
-    const extra = {};
-    if (kind === 'image' && r.fileToken) {
-      const got = takeDownload(r.fileToken, IMAGE_TYPES[String(r.mime || '').split(';')[0]] || 'jpg');
+    const extra = {}, mime = String(r.mime || '').split(';')[0];
+    // A downloaded photo or video may be a whole album (WhatsApp's ZIP): keep the one picked, or every one
+    const got = (kind === 'image' || kind === 'video') && r.fileToken ? takeDownload(r.fileToken, kind === 'image' ? IMAGE_TYPES[mime] || 'jpg' : VIDEO_TYPES[mime] || 'mp4') : null;
+    if (got && isZip(path.join(mediaDir, got.file))) return addAlbum(r, text, got);
+    if (kind === 'image' && got) {
       if (!['jpg', 'png', 'webp'].includes(sniff(headOf(path.join(mediaDir, got.file))))) { drop(got.file); throw Error('图片无法保存'); }
       extra.image = got.file;
     } else if (kind === 'image') { extra.image = storePicture(r.imageData); if (!extra.image) throw Error('图片无法保存'); }
-    else if (kind === 'video' && r.fileToken) {
-      const got = takeDownload(r.fileToken, VIDEO_TYPES[String(r.mime || '').split(';')[0]] || 'mp4'), stored = path.join(mediaDir, got.file);
-      if (isZip(stored)) {
-        const parts = await unpackAlbum(stored);
-        drop(got.file);
-        if (!parts.length) throw Error('相册里没有可保存的影片或图片');
-        const base = { text, author: String(r.author || '').slice(0, 120), time: String(r.time || '').slice(0, 60), title: String(r.title || '').slice(0, 200), savedAt: now() };
-        const added = parts.map((p) => ({ id: crypto.randomUUID(), ...base, kind: p.kind, ...(p.kind === 'video' ? { video: p.name, size: p.size } : { image: p.name }) }));
-        clips.set(key(r.accountId, r.chatKey), [...(clips.get(key(r.accountId, r.chatKey)) || []), ...added].slice(-MAX_PER_CHAT)); save();
-        return added.map(view);
-      }
+    else if (kind === 'video' && got) {
+      const stored = path.join(mediaDir, got.file);
       // (a web page or error instead of a video is not kept)
       if (!['mp4', 'mov', 'webm'].includes(sniff(headOf(stored)))) { drop(got.file); throw Error('下载到的不是影片，无法保存'); }
       Object.assign(extra, { video: got.file, size: got.size }); extra.image = storePicture(r.imageData);
