@@ -186,5 +186,9 @@ const server = http.createServer(async (req, res) => {
 // Knowledge-base learning calls can take minutes
 server.requestTimeout = 0;
 server.headersTimeout = 60e3;
-if (require.main === module) server.listen(PORT, () => console.log(`BlackCat server on http://localhost:${PORT}  (admin: /admin/)  data: ${DATA_DIR}`));
+if (require.main === module) {
+  const listen = { port: PORT };
+  if (process.env.HOST) listen.host = process.env.HOST;
+  server.listen(listen, () => console.log(`BlackCat server on port ${PORT}  (admin: /admin/)  data: ${DATA_DIR}`));
+}
 module.exports = { server, store };

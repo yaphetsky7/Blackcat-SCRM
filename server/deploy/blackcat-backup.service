@@ -1,0 +1,7 @@
+[Unit]
+Description=Consistent BlackCat SCRM database backup
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/blackcat-server/current/server/deploy/backup-database.py
+UMask=0077

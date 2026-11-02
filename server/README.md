@@ -28,9 +28,12 @@ ANTHROPIC_API_KEY=你的Key PORT=8787 npm start
 |---|---|
 | `ANTHROPIC_API_KEY` | 你的 Claude API Key，客户用黑猫点数时由服务器代为调用 |
 | `PORT` | 端口，默认 8787 |
+| `HOST` | 监听地址；云服务器建议 `127.0.0.1`，由 HTTPS 反向代理提供访问 |
 | `DATA_DIR` | 资料目录，默认 `./data` |
 | `DIST_DIR` | 发布更新时读取安装包的文件夹，默认 `../dist` |
 | `ADMIN_COOKIE_SECURE` | 用 HTTPS 时设为 `1` |
+
+Ubuntu / Linode 部署与迁移说明：[deploy/README.md](deploy/README.md)。
 
 ## 点数怎么扣
 

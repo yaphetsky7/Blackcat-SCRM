@@ -1,0 +1,5 @@
+# Replace this hostname with the public hostname of your server.
+blackcat.example.com {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:8787
+}
