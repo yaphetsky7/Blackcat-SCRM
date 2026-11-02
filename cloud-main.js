@@ -22,10 +22,15 @@ function registerCloud({ app, ipcMain, dialog, shell, getWindow, license, backup
     const result = await res.json(); if (!res.ok || !result.ok) throw Error(result.error || '云备份请求失败'); return result.data;
   }
   async function state() { const b = backupService.state(); return { ...await request('state'), ...config(), businessSync: businessClient?.owner === owner() ? businessClient.client.status() : {}, cloudPrimary: b.storageMode === 'cloud', pendingMessages: b.storageMode === 'cloud' ? b.counts.messages : 0, captureEnabled: b.enabled, scanRunning: !!b.running, scanProgress: b.running?.progress || '', running: !!current, progress: current?.progress || '' }; }
-  let businessClient = null, businessAttempt = 0;
+  let businessClient = null, businessAttempt = 0, businessTask = null;
   const edits = new Map();
   ipcMain.on('cloud:editing', (e, { key, busy } = {}) => { if (e.sender !== getWindow()?.webContents || typeof key !== 'string') return; if (busy) edits.set(key, Date.now()); else edits.delete(key); });
   async function syncBusiness() {
+    if (businessTask) return { running: true };
+    businessTask = runBusiness();
+    try { return await businessTask; } finally { businessTask = null; }
+  }
+  async function runBusiness() {
     if (!primaryPlan() || !owner()) throw Error('云同步需要 Business 或 Enterprise 配套');
     const user = owner();
     const bindingFile = path.join(dataDir, 'cloud-data-owner.json'), binding = read(bindingFile, null);
@@ -121,9 +126,11 @@ function registerCloud({ app, ipcMain, dialog, shell, getWindow, license, backup
   }, 15000); clock.unref?.();
   backupService.state();
   backupService.setCloudRecent(r => request('archive/recent', 'POST', r));
-  let accountLifecycle = Promise.resolve();
+  let accountLifecycle = Promise.resolve(), lifecycleRunning = false;
   const lifecycleFile = path.join(dataDir, 'cloud-account-events.json'), lifecycle = read(lifecycleFile, {});
   function reconcileAccounts() {
+    if (lifecycleRunning) return accountLifecycle;
+    lifecycleRunning = true;
     const user = owner();
     accountLifecycle = accountLifecycle.catch(() => {}).then(async () => {
       if (owner() !== user || !primaryPlan()) return;
@@ -132,7 +139,7 @@ function registerCloud({ app, ipcMain, dialog, shell, getWindow, license, backup
         if (lifecycle[user]?.[id]?.at === event.at) { delete lifecycle[user][id]; atomic(lifecycleFile, lifecycle); }
       }
       await request('archive/accounts-active', 'POST', { accounts: read(path.join(dataDir, 'accounts.json'), []).map(require('./cloud-data').safeAccount) });
-    });
+    }).finally(() => { lifecycleRunning = false; });
     return accountLifecycle;
   }
   app.on('blackcat:accounts-saved', ({ previous, accounts }) => {
