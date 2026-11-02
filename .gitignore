@@ -5,3 +5,5 @@ dist-next/
 server/data/
 *.log
 .env
+.blackcat-deploy.json
+server/cloud-origin.json

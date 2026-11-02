@@ -1,5 +1,9 @@
 ﻿# Starts the BlackCat server with your Claude API key.
 # The key is asked for here (hidden while you paste) and only kept for this window; it is not saved to disk.
+if (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'cloud-origin.json')) {
+  node (Join-Path $PSScriptRoot 'cloud-forwarder.cjs')
+  exit $LASTEXITCODE
+}
 $secure = Read-Host '请粘贴你的 Claude API Key（粘贴时不会显示），然后按 Enter / Paste your Claude API key, then press Enter' -AsSecureString
 $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
 $key = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr).Trim()

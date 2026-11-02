@@ -1,0 +1,4 @@
+{
+  "sshTarget": "root@YOUR_SERVER_IP",
+  "identityFile": "%USERPROFILE%\\.ssh\\YOUR_SERVER_KEY"
+}

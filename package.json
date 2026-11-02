@@ -4,7 +4,7 @@
   "version": "1.15.1",
   "description": "黑猫SCRM 多平台聊天与客户管理",
   "main": "main.js",
-  "blackcatServer": "https://sky.tail75b558.ts.net",
+  "blackcatServer": "https://blackcat.172-104-185-164.sslip.io",
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder --win nsis",
@@ -79,7 +79,7 @@
     "publish": [
       {
         "provider": "generic",
-        "url": "https://sky.tail75b558.ts.net/updates"
+        "url": "https://blackcat.172-104-185-164.sslip.io/updates"
       }
     ]
   },

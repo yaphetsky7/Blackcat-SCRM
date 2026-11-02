@@ -187,8 +187,13 @@ const server = http.createServer(async (req, res) => {
 server.requestTimeout = 0;
 server.headersTimeout = 60e3;
 if (require.main === module) {
-  const listen = { port: PORT };
-  if (process.env.HOST) listen.host = process.env.HOST;
-  server.listen(listen, () => console.log(`BlackCat server on port ${PORT}  (admin: /admin/)  data: ${DATA_DIR}`));
+  if (fs.existsSync(path.join(__dirname, 'cloud-origin.json'))) {
+    store.close();
+    require('./cloud-forwarder.cjs').startFromConfig({ port: PORT });
+  } else {
+    const listen = { port: PORT };
+    if (process.env.HOST) listen.host = process.env.HOST;
+    server.listen(listen, () => console.log(`BlackCat server on port ${PORT}  (admin: /admin/)  data: ${DATA_DIR}`));
+  }
 }
 module.exports = { server, store };

@@ -28,7 +28,11 @@ if (-not $built) { throw '打包失败。请关闭从 dist 文件夹打开的黑
 Write-Host '3/4 发布给客户… / Publishing to customers…'
 $env:BC_NOTES = $notes
 $env:BC_FORCED = if ($forced -match '^[yY]') { '1' } else { '0' }
-node server\scripts\publish-update.js
+if (Test-Path -LiteralPath (Join-Path (Get-Location) '.blackcat-deploy.json')) {
+  node scripts\publish-cloud-update.cjs
+} else {
+  node server\scripts\publish-update.js
+}
 if ($LASTEXITCODE) { throw '发布失败 / Publish failed' }
 
 # GitHub is public: only push when no Claude key slipped into the files. Customers already have the update even if this step fails.

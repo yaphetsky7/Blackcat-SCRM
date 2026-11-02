@@ -37,6 +37,11 @@ Claude Key 由管理员在自己的交互终端输入：先将 configure-claude.
 核对客户登录、余额、AI 收费和更新下载后再切换客户地址，避免两个后台各自扣点。
 旧 *.ts.net 地址绑定原 Tailscale 设备，不能直接当成新服务器的 DNS 地址；必须安排旧客户端的迁移或过渡入口。
 
+旧 Windows 入口可建立 server/cloud-origin.json，仅包含 origin（新后台 HTTPS 地址）。
+存在该文件时，npm start 和 start-with-key.ps1 使用 cloud-forwarder.cjs 转接到云端，不再提供本地账号或扣点服务。
+此文件不提交 Git，也不复制到云服务器。旧地址仍依赖旧 Windows 电脑及 Tailscale；已更新到新地址的客户端直接连接云端。
+使用新的安装包可自动把原默认 *.ts.net 地址迁到新默认地址，用户自设的其他服务器地址会保留。
+
 ## Windows 打包后发布
 
 将这次安装包上传到服务器的 dist/，核对 SHA512，设置所有权后，在服务器上运行：
@@ -46,3 +51,8 @@ Claude Key 由管理员在自己的交互终端输入：先将 configure-claude.
 
 发布器会选择 dist/ 内最高版本，只应放本次待发布的安装包。已发布版本不能直接用更低版本覆盖。
 此步骤只发布云服务器的更新；原来 Windows 的本地发布脚本不会自动上传到云端。
+
+Windows 一键发布：将 local.example.json 复制为项目根目录的 .blackcat-deploy.json，填写 SSH 目标和密钥路径。
+该文件已被 Git 忽略，不填写密钥内容或 Claude Key。正常运行原来的推送更新.bat，就会使用云端上传流程。
+也可以先打包，再单独运行 node scripts/publish-cloud-update.cjs，BC_NOTES、BC_FORCED 环境变量的用法保持一致。
+流程上传当前版本的唯一安装包，验证 SHA512，然后在云端发布；安装包不会与 dist 目录里误写的旧版本混用。
