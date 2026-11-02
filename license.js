@@ -14,10 +14,11 @@ function createLicense({ dataDir, safeStorage, defaultServer = '', appVersion = 
   try { saved = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
   // Temporary trycloudflare.com addresses stop working when the tunnel restarts; move them to the permanent default
   if (/\.trycloudflare\.com\/?$/i.test(saved.server || '') && defaultServer && !/\.trycloudflare\.com/i.test(defaultServer)) delete saved.server;
-  // Move only our former default endpoint; preserve customers' custom servers.
-  const legacyServer = 'https://sky.tail75b558.ts.net';
+  // Move only our former default endpoints; preserve customers' custom servers.
+  const legacyServers = new Set(['https://sky.tail75b558.ts.net', 'https://blackcat.172-104-185-164.sslip.io']);
   const nextDefault = String(defaultServer || '').replace(/\/+$/, '');
-  if (nextDefault && nextDefault !== legacyServer && String(saved.server || '').replace(/\/+$/, '') === legacyServer) delete saved.server;
+  const savedServer = String(saved.server || '').replace(/\/+$/, '');
+  if (nextDefault && nextDefault !== savedServer && legacyServers.has(savedServer)) delete saved.server;
   if (!saved.deviceId) saved.deviceId = crypto.randomUUID();
   let reason = '';
   const write = () => fs.writeFileSync(file, JSON.stringify(saved, null, 2));

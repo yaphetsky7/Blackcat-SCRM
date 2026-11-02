@@ -1,10 +1,10 @@
 {
   "name": "blackcat-crm",
   "productName": "黑猫SCRM",
-  "version": "1.15.1",
+  "version": "1.15.2",
   "description": "黑猫SCRM 多平台聊天与客户管理",
   "main": "main.js",
-  "blackcatServer": "https://blackcat.172-104-185-164.sslip.io",
+  "blackcatServer": "https://api.blackcatscrm.com",
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder --win nsis",
@@ -79,7 +79,7 @@
     "publish": [
       {
         "provider": "generic",
-        "url": "https://blackcat.172-104-185-164.sslip.io/updates"
+        "url": "https://api.blackcatscrm.com/updates"
       }
     ]
   },
