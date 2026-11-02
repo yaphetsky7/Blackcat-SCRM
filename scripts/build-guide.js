@@ -6,12 +6,14 @@ const path = require('path');
 const { pathToFileURL } = require('url');
 
 const root = path.join(__dirname, '..');
+app.setPath('userData', path.join(app.getPath('temp'), 'blackcat-pdf-build-' + process.pid));
 const guide = require(path.join(root, 'guide-figures.js'));
-const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const esc = (s) => String(s).replace(/[\u2011\u2013\u2014]/g, '-').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const img = (name) => pathToFileURL(path.join(root, 'assets', 'guide', name + '.jpg')).href;
 
 // Narrow crops (panels) sit beside their steps, medium crops stay near natural size, full screenshots span the page.
 function layout(name) {
+  if (name === 'settings-local-v118') return 'wide';
   const { width, height } = nativeImage.createFromPath(path.join(root, 'assets', 'guide', name + '.jpg')).getSize();
   return width / height < 1.3 ? 'side' : width < 1000 ? 'mid' : 'wide';
 }
@@ -23,7 +25,7 @@ function html() {
       <header class="ch-head"><span class="ch-no">${String(i + 1).padStart(2, '0')}</span><div><h2>${esc(c.zh)}</h2><h3>${esc(c.en)}</h3></div></header>
       <p class="intro">${esc(c.introZh)}<br><span class="en">${esc(c.introEn)}</span></p>
       ${c.figures.map((f) => `
-        <figure class="${layout(f.img)}">
+        <figure class="${layout(f.img)} ${f.img === 'settings-local-v118' ? 'backup-local' : ''}">
           <figcaption>${esc(f.zh)} <span class="en">/ ${esc(f.en)}</span></figcaption>
           <div class="body"><img src="${img(f.img)}">
           <ol>${f.steps.map(([zh, en], k) => `<li><span class="badge">${k + 1}</span><div>${esc(zh)}<br><span class="en">${esc(en)}</span></div></li>`).join('')}</ol></div>
@@ -58,6 +60,7 @@ function html() {
     figure img { border: 1px solid #dee0e3; border-radius: 1.5mm; display: block; }
     figure ol { list-style: none; padding: 0; margin: 0; }
     .wide img { width: 100%; }
+    .backup-local img { width: 155mm; margin: 0 auto; }
     .mid img { width: 128mm; }
     .wide ol, .mid ol { margin-top: 3mm; columns: 2; column-gap: 6mm; }
     .side .body { display: flex; gap: 6mm; align-items: flex-start; }
@@ -72,7 +75,7 @@ function html() {
       <img src="${pathToFileURL(path.join(root, 'assets', 'blackcat.png')).href}">
       <h1>黑猫SCRM 图文使用教程</h1>
       <p class="sub">BlackCat SCRM Illustrated User Guide</p>
-      <p class="ver">版本 Version ${esc(guide.version)} · 中文 / English<br>截图使用示例账号，二维码已模糊处理。<br><span class="en">Screenshots use demo accounts; QR codes are blurred.</span></p>
+      <p class="ver">版本 Version ${esc(guide.version)} · 中文 / English · 2026-11-03<br>本地备份 / 云端备份与同步 · Local / cloud backup and sync<br>截图使用演示资料；部分旧界面图示请以当前文字说明为准。<br><span class="en">Demo data is used. Some older illustrations differ; follow the current written instructions.</span></p>
     </div>
     <div class="toc"><h2>目录 <span class="en" style="font-size:12pt">Contents</span></h2><ol>${toc}</ol></div>
     ${chapters}
@@ -80,7 +83,7 @@ function html() {
 }
 
 app.whenReady().then(async () => {
-  const tmp = path.join(app.getPath('temp'), 'blackcat-guide.html');
+  const tmp = path.join(app.getPath('temp'), 'blackcat-guide-' + process.pid + '.html');
   fs.writeFileSync(tmp, html());
   const win = new BrowserWindow({ show: false, webPreferences: { offscreen: true } });
   await win.loadFile(tmp);

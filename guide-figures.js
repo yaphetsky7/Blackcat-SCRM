@@ -1,6 +1,6 @@
 // Illustrated bilingual tutorial: shared by the PDF builder and the assistant's tutorial cards.
 // Each figure's steps follow the numbered markers drawn on assets/guide/<img>.jpg.
-module.exports = { version: '1.45', chapters: [
+module.exports = { version: '1.18.1', chapters: [
 { id: 'start', zh: '安装与第一次使用', en: 'Installation and first launch',
   keywords: /安装|登录|扫码|新建|二维码|第一次|开始|install|login|log in|sign in|qr|first|start|new session/i,
   introZh: '黑猫SCRM 把多个平台的账号放在同一个窗口里。每个账号独立登录，聊天界面仍是各平台的网页版。',
@@ -33,8 +33,8 @@ module.exports = { version: '1.45', chapters: [
       ['打开手机 Telegram → 设置 → 设备 → 连接桌面设备，扫描屏幕上的二维码。', 'On your phone open Telegram → Settings → Devices → Link Desktop Device, then scan the QR code.'],
     ] },
   ],
-  tipZh: '其他电脑安装后需要重新登录各平台账号，并在 设置 → API Key 重新填写自己的 Claude API Key。',
-  tipEn: 'On another computer you must sign in to each platform again and enter your own Claude API key under Settings → API Key.' },
+  tipZh: '先使用黑猫用户名和密码登录软件，登录画面无需填写服务器地址。其他电脑需重新登录平台账号；使用黑猫点数不需要自己的 Claude Key，选用自己的 Key 时才在 设置 → API Key 填写。',
+  tipEn: 'Sign into BlackCat with your username and password; no server address is needed. Sign into platforms again on another computer. BlackCat points need no personal Claude key; only enter a key if choosing your own key in Settings.' },
 
 { id: 'proxy', zh: '环境设置与代理 IP', en: 'Session settings and proxy IP',
   keywords: /代理|环境|ip|proxy|socks|铃声|名称|改名|rename|sound/i,
@@ -78,8 +78,8 @@ module.exports = { version: '1.45', chapters: [
       ['Lingva 服务器：可填写自建服务器，一行一个。', 'Lingva servers: add your own servers, one per line.'],
     ] },
   ],
-  tipZh: '新增“使用翻译快捷键”（默认关闭）：勾选后，Ctrl+T只把译文放进输入框，再按Enter发送；点击快捷键输入框可改组合键，按账号保存。关闭时保留Enter翻译并发送。“粉丝独立翻译”可给每个客户单独设语言。第一次使用请先在测试对话中核对译文。',
-  tipEn: 'New: "Use translation shortcut" (off by default). Ctrl+T fills the translation without sending; Enter sends it afterwards. Click the shortcut field to choose another combination, saved per account. With it off, Enter translates and sends. Per-contact translation allows different customer languages. Check translations in a test chat first.' },
+  tipZh: '“使用翻译快捷键”（默认关闭）：勾选后，Ctrl+T只把译文放进输入框，再按Enter发送；点击快捷键输入框可改组合键，按账号保存。关闭时保留Enter翻译并发送。“粉丝独立翻译”可给每个客户单独设语言。第一次使用请先在测试对话中核对译文。',
+  tipEn: '"Use translation shortcut" (off by default). Ctrl+T fills the translation without sending; Enter sends it afterwards. Click the shortcut field to choose another combination, saved per account. With it off, Enter translates and sends. Per-contact translation allows different customer languages. Check translations in a test chat first.' },
 
 { id: 'quick', zh: '快捷回复', en: 'Quick replies',
   keywords: /快捷|模板|常用回复|quick|canned|template reply/i,
@@ -107,8 +107,8 @@ module.exports = { version: '1.45', chapters: [
 
 { id: 'contacts', zh: '联系人、客户备注与保存聊天', en: 'Contacts, notes and saving chats',
   keywords: /联系人|备注|客户资料|保存到备注|已保存的消息|contact|note|customer|save to notes/i,
-  introZh: '联系人功能支持 WhatsApp 和 Telegram。“账号联系人”自动读取，“我的联系人”可手动添加或 Excel 导入。聊天里的消息、图片、影片、语音和文件可以保存到客户备注（WhatsApp、Telegram、Messenger），只存在本机。',
-  introEn: 'Contacts work with WhatsApp and Telegram. "Account contacts" are read automatically. "My contacts" are added by hand or from Excel. Messages, photos, videos, voice notes and files can be saved into the customer\'s notes (WhatsApp, Telegram, Messenger), kept only on this computer.',
+  introZh: '联系人功能支持 WhatsApp 和 Telegram。“账号联系人”自动读取，“我的联系人”可手动添加或 Excel 导入。聊天里的消息、图片、影片、语音和文件可以保存到客户备注（WhatsApp、Telegram、Messenger）。文字备注在 Business/Enterprise 可跨电脑同步；保存的聊天片段与附件仍需保留本地副本。',
+  introEn: 'Contacts work with WhatsApp and Telegram. "Account contacts" are read automatically. "My contacts" are added by hand or from Excel. Messages, photos, videos, voice notes and files can be saved into the customer\'s notes (WhatsApp, Telegram, Messenger), with typed notes synced on Business/Enterprise. Keep local copies of saved chat clips and attachments.',
   figures: [
     { img: 'contacts', zh: '账号联系人', en: 'Account contacts', steps: [
       ['点击右侧“联系人”。', 'Click "Contacts" on the right bar.'],
@@ -191,8 +191,8 @@ module.exports = { version: '1.45', chapters: [
 
 { id: 'ai', zh: '知识库与 AI 自动回复', en: 'Knowledge base and AI auto-reply',
   keywords: /知识库|自动回复|ai|学习|sonnet|knowledge|auto.?reply|learn/i,
-  introZh: 'Sonnet 负责学习资料，Haiku 负责生成回复。每个账号选一个知识库，多个账号可以共用。',
-  introEn: 'Sonnet learns your material and Haiku writes the replies. Each account uses one knowledge base, and accounts can share one.',
+  introZh: 'Sonnet 负责学习资料，Haiku 负责生成回复。未新建平台会话也可从右侧AI回复进入知识库；账号的自动回复设置需先新建并选中账号。每个账号选一个知识库，多个账号可以共用。',
+  introEn: 'Sonnet learns your material and Haiku writes replies. Knowledge is accessible before adding a platform session; account AI settings require a selected account. Each account uses one knowledge base, and accounts can share one.',
   figures: [
     { img: 'ai-kb', zh: '新建知识库', en: 'Create a knowledge base', steps: [
       ['输入知识库名称。', 'Enter a knowledge base name.'],
@@ -257,7 +257,7 @@ module.exports = { version: '1.45', chapters: [
       ['平台设置。', 'Platforms.'],
       ['打开或关闭平台入口，用箭头调整顺序。', 'Show or hide each platform and change the order with the arrows.'],
     ] },
-    { img: 'settings-backup', zh: '本地备份', en: 'Local backup', steps: [
+    { img: 'settings-local-v118', zh: '本地备份 · Starter / Pro', en: 'Local backup · Starter / Pro', steps: [
       ['选择备份文件夹。', 'Choose a backup folder.'],
       ['启用本地聊天归档。', 'Enable the local chat archive.'],
       ['每小时自动备份。', 'Back up every hour.'],
@@ -270,6 +270,22 @@ module.exports = { version: '1.45', chapters: [
   tipZh: '有未读消息的对话会先跳过，等你看过后下一轮再备份，客户那边不会出现你没看过的“已读”。备份只包含软件实际读取到的记录和已下载的附件。重要资料请同时保留平台官方导出，并把 .blackcat 文件复制到另一块硬盘。',
   tipEn: 'Chats with unread messages are skipped until you have read them, so customers never see a "read" you did not do. Backups include only what the app could read and attachments that were downloaded. Keep the platform\'s official export too, and copy .blackcat files to another drive.' },
 
+{ id: 'cloud', zh: '云端备份与工作资料同步', en: 'Cloud backup and workspace sync',
+  keywords: /云|备份|同步|换电脑|cloud|backup|sync|new computer/i,
+  introZh: 'Business 包含 100 GB，Enterprise 包含 500 GB，同一黑猫客户账号的电脑共用容量。聊天以云端为主；联系人、群发名单和文案、已学习知识库与源文件、回复说明和文字备注逐项同步。',
+  introEn: 'Business includes 100 GB and Enterprise 500 GB, shared across that BlackCat customer’s computers. Chats are cloud-first. Contacts, recipient lists, templates, learned knowledge and sources, reply instructions and typed notes sync by item.',
+  figures: [{ img: 'settings-cloud-chats-v118', zh: '云备份：聊天记录与工作资料', en: 'Cloud backup: chats and workspace data', steps: [
+    ['左下角设置 → 云备份，查看配套容量与连接状态。', 'Open Settings → Cloud backup to check plan storage and connection status.'],
+    ['开启自动保存软件可读取的聊天；照片及影片按需读取。', 'Enable automatic capture of readable chats; photos and videos load on demand.'],
+    ['查看云端聊天记录：按账号和客户浏览，不用下载全部历史。', 'View cloud chats: browse by account and customer without downloading all history.'],
+    ['补存可读取历史用于补充旧消息；扫描时可点击停止扫描。', 'Collect readable history adds older messages. Use Stop scan while scanning.'],
+  ] }, { img: 'settings-cloud-workspace-v118', zh: '工作资料自动同步', en: 'Automatic workspace sync', steps: [
+    ['开启自动同步工作资料；数量和最后同步时间显示在下方。', 'Enable workspace sync; item counts and the last sync time appear below.'],
+    ['需要时点击立即同步资料。新电脑安装最新版并登录同一黑猫账号后自动加载，不用恢复点、导入或重开软件。', 'Use Sync workspace now when needed. On a new computer, install the latest version and sign into the same BlackCat account. No recovery points, imports or restarts.'],
+  ] }],
+  tipZh: '离线修改联网后补传，删除也会同步。同一项目以最后成功同步的修改为准。重新登录同一号码或username后，云端历史归回正常账号。平台登录和API密钥不上传，新电脑AI自动回复需自行开启，群发任务不会自动执行。R2试用有全体客户共享的总量保护，先达到保护上限时会暂停上传并保留待传内容。',
+  tipEn: 'Offline edits upload later; deletions sync too. For the same item, the last successfully synced edit wins. Signing back into the same number or username returns its cloud history to active accounts. Platform logins and API keys are excluded. Enable AI replies on each computer yourself; bulk jobs never start automatically. Shared R2 trial safety limits can pause uploads earlier than your plan allowance; pending data is retained.' },
+
 { id: 'assistant', zh: '黑猫助手', en: 'Black Cat assistant',
   keywords: /助手|黑猫|assistant|helper/i,
   introZh: '黑猫助手可以回答用法问题、直接帮你修改设置，也能读取聊天并建议回复：说“读取当前聊天，建议怎么回复”，它会看懂文字、群组成员和最新的照片，给 2–3 条建议回复卡片；“填入输入框”只放进输入框，由你确认后发送。',
@@ -280,9 +296,6 @@ module.exports = { version: '1.45', chapters: [
       ['“可直接操作的功能”列出助手能帮你做的事。', '"Available actions" lists what the assistant can do for you.'],
       ['输入问题或指令，例如“教我设置 AI 回复”或“切换暗黑模式”。', 'Type a question or instruction, for example "how do I set up AI replies" or "switch to dark mode".'],
       ['发送。问用法时，回答下方会附上带编号截图的图文教程；发送消息、删除、开启 AI 等操作会先显示确认卡。', 'Send. How-to answers include illustrated steps with numbered screenshots. Sending messages, deleting or turning on AI shows a confirmation card first.'],
-    ] },
-    { img: 'assistant-nokey', zh: '还没有 API Key 时', en: 'Before an API key is saved', steps: [
-      ['助手需要 Claude API Key。点“打开 API Key 设置”直接跳到 设置 → API Key。', 'The assistant needs a Claude API key. Click "Open API key settings" to jump to Settings → API Key.'],
     ] },
   ],
   tipZh: '请提供账号名、平台、客户名和具体要求。不要在聊天中粘贴 API Key。',
