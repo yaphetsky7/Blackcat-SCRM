@@ -9,7 +9,11 @@ const JSZip = require('jszip');
 const MAX_PER_CHAT = 500, MAX_IMAGE = 8 * 1024 * 1024, MAX_FILE = 200 * 1024 * 1024;
 const VIDEO_TYPES = { 'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov' };
 const ALBUM_VIDEO = ['mp4', 'mov', 'webm', 'm4v', '3gp'], ALBUM_IMAGE = ['jpg', 'jpeg', 'png', 'webp'];
-const sniff = (b) => (b.toString('latin1', 4, 8) === 'ftyp' ? (b.toString('latin1', 8, 12) === 'qt  ' ? 'mov' : 'mp4') : b[0] === 0xff && b[1] === 0xd8 ? 'jpg' : b.toString('hex', 0, 4) === '89504e47' ? 'png' : '');
+// What a file really is, from its first bytes
+const sniff = (b) => (b.toString('latin1', 4, 8) === 'ftyp' ? (b.toString('latin1', 8, 12) === 'qt  ' ? 'mov' : 'mp4') : b[0] === 0xff && b[1] === 0xd8 ? 'jpg' : b.toString('hex', 0, 4) === '89504e47' ? 'png'
+  : b.toString('latin1', 0, 4) === 'RIFF' && b.toString('latin1', 8, 12) === 'WEBP' ? 'webp' : b.toString('hex', 0, 4) === '1a45dfa3' ? 'webm' : '');
+const headOf = (file) => { const head = Buffer.alloc(16), fd = fs.openSync(file, 'r'); try { fs.readSync(fd, head, 0, 16, 0); } finally { fs.closeSync(fd); } return head; };
+const IMAGE_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 const AUDIO_TYPES = { 'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/webm': 'webm', 'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/aac': 'aac' };
 
 function createClipsStore(dataDir, now = Date.now) {
@@ -75,24 +79,31 @@ function createClipsStore(dataDir, now = Date.now) {
     }
     return parts;
   }
-  const isZip = (file) => { const head = Buffer.alloc(4), fd = fs.openSync(file, 'r'); try { fs.readSync(fd, head, 0, 4, 0); } finally { fs.closeSync(fd); } return head.equals(Buffer.from([0x50, 0x4b, 0x03, 0x04])); };
+  const isZip = (file) => headOf(file).subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
   const used = (name) => [...clips.values()].some((all) => all.some((i) => [i.image, i.video, i.audio, i.file].includes(name)));
+  const drop = (name) => { if (!used(name)) fs.rmSync(path.join(mediaDir, name), { force: true }); };
   async function add(r) {
     check(r);
     const text = String(r.text || '').slice(0, 20000), kind = ['image', 'video', 'voice', 'file'].includes(r.kind) ? r.kind : 'text';
     const extra = {};
-    if (kind === 'image') { extra.image = storePicture(r.imageData); if (!extra.image) throw Error('图片无法保存'); }
+    if (kind === 'image' && r.fileToken) {
+      const got = takeDownload(r.fileToken, IMAGE_TYPES[String(r.mime || '').split(';')[0]] || 'jpg');
+      if (!['jpg', 'png', 'webp'].includes(sniff(headOf(path.join(mediaDir, got.file))))) { drop(got.file); throw Error('图片无法保存'); }
+      extra.image = got.file;
+    } else if (kind === 'image') { extra.image = storePicture(r.imageData); if (!extra.image) throw Error('图片无法保存'); }
     else if (kind === 'video' && r.fileToken) {
       const got = takeDownload(r.fileToken, VIDEO_TYPES[String(r.mime || '').split(';')[0]] || 'mp4'), stored = path.join(mediaDir, got.file);
       if (isZip(stored)) {
         const parts = await unpackAlbum(stored);
-        if (!used(got.file)) fs.rmSync(stored, { force: true });
+        drop(got.file);
         if (!parts.length) throw Error('相册里没有可保存的影片或图片');
         const base = { text, author: String(r.author || '').slice(0, 120), time: String(r.time || '').slice(0, 60), title: String(r.title || '').slice(0, 200), savedAt: now() };
         const added = parts.map((p) => ({ id: crypto.randomUUID(), ...base, kind: p.kind, ...(p.kind === 'video' ? { video: p.name, size: p.size } : { image: p.name }) }));
         clips.set(key(r.accountId, r.chatKey), [...(clips.get(key(r.accountId, r.chatKey)) || []), ...added].slice(-MAX_PER_CHAT)); save();
         return added.map(view);
       }
+      // (a web page or error instead of a video is not kept)
+      if (!['mp4', 'mov', 'webm'].includes(sniff(headOf(stored)))) { drop(got.file); throw Error('下载到的不是影片，无法保存'); }
       Object.assign(extra, { video: got.file, size: got.size }); extra.image = storePicture(r.imageData);
     }
     else if (kind === 'video') { extra.video = storeMedia(Object.assign(r.videoBytes || [], { mime: r.mime }), VIDEO_TYPES, 'mp4', '影片'); extra.image = storePicture(r.imageData); extra.size = r.videoBytes.length; }
@@ -166,6 +177,27 @@ function registerClips({ app, ipcMain, shell, getWindow, loadAccounts, managedGu
       });
     }
     return { ok: true, data: token };
+  });
+  // Pictures, videos and files a chat page shows from another site (Facebook's) but may not copy: downloaded with that
+  // chat's own session, into clip-media/incoming like the page's own downloads
+  ipcMain.handle('clips:fetch-url', async (e, r = {}) => {
+    try {
+      if (!managedGuests.has(e.sender.id)) throw Error('无权保存');
+      const url = new URL(String(r.url || ''));
+      if (url.protocol !== 'https:') throw Error('无法下载这个文件');
+      const res = await e.sender.session.fetch(url.href);
+      if (!res.ok) throw Error('下载失败（' + res.status + '）');
+      if (Number(res.headers.get('content-length') || 0) > MAX_FILE) throw Error('文件超过 200 MB，无法保存');
+      const bytes = Buffer.from(await res.arrayBuffer());
+      if (bytes.length > MAX_FILE) throw Error('文件超过 200 MB，无法保存');
+      const token = crypto.randomUUID(), target = store.incomingPath(token), mime = String(res.headers.get('content-type') || '').split(';')[0].trim();
+      const given = /filename\*?=(?:UTF-8'')?"?([^";]+)/i.exec(res.headers.get('content-disposition') || '')?.[1];
+      let name = given || path.basename(url.pathname) || 'file';
+      try { name = decodeURIComponent(name); } catch {}
+      fs.writeFileSync(target, bytes);
+      store.incoming.set(token, { path: target, name, mime });
+      return { ok: true, data: { token, name, size: bytes.length, mime } };
+    } catch (error) { return { ok: false, error: error.message }; }
   });
   return store;
 }

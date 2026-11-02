@@ -217,7 +217,8 @@ const ADAPTERS = [
   },
   {
     match: () => location.host.endsWith('facebook.com') && location.pathname.startsWith('/messages'),
-    messages: '[role="main"] [role="row"] div[dir="auto"]',
+    // Messenger's newer layout puts each message in a data-scope="messages_table" block instead of a row
+    messages: '[role="main"] [data-scope="messages_table"] div[dir="auto"], [role="main"] [role="row"] div[dir="auto"]',
     leafOnly: true,
     composer: '[role="main"] [role="textbox"][contenteditable="true"]',
     chat: () => ({ key: location.pathname, title: textOf('[role="main"] h2') }),
@@ -1531,7 +1532,7 @@ function installBackupGuest({ipc,getConfig,getAdapter,getComposer,getBoxText,bri
   let lastDigest='',lastCapture=0,capturing=false,workers=0,awaitingChat=null,lastReadChat='',lastReadSignature='',chatSeenId='',chatSeenAt=0;const pending=new Map(),active=new Set(),failed=new Map();
   const hash=text=>{let n=2166136261;for(const c of String(text)){n^=c.codePointAt(0);n=Math.imul(n,16777619);}return(n>>>0).toString(36);};
   const enabled=()=>getConfig()?.backupWatch===true;
-  function roots(){const p=location.host;const selector=p==='web.telegram.org'?'.Message':p==='web.whatsapp.com'?WA_MESSAGES:p.endsWith('facebook.com')?'[role="main"] [role="row"]':'[data-message-id],[class*="messageItem" i]';const nodes=new Set(document.querySelectorAll(selector));for(const el of document.querySelectorAll(getAdapter()?.messages||'[data-no-message]'))nodes.add(el.closest(selector)||el.parentElement);const area=document.querySelector('#main,#MiddleColumn,.MessageList,[role="main"],[class*="chatroomContent" i]');if(area)for(const el of area.querySelectorAll('video,audio,a[download],[class*="imageMessage" i] img,[class*="mediaMessage" i] img'))nodes.add(el.closest(selector)||el.parentElement);return[...nodes].filter(el=>!el.closest('.wam-tr,.wam-float,[contenteditable="true"]')&&![...nodes].some(parent=>parent!==el&&parent.contains(el)));}
+  function roots(){const p=location.host;const selector=p==='web.telegram.org'?'.Message':p==='web.whatsapp.com'?WA_MESSAGES:p.endsWith('facebook.com')?'[role="main"] [data-scope="messages_table"],[role="main"] [role="row"]':'[data-message-id],[class*="messageItem" i]';const nodes=new Set(document.querySelectorAll(selector));for(const el of document.querySelectorAll(getAdapter()?.messages||'[data-no-message]'))nodes.add(el.closest(selector)||el.parentElement);const area=document.querySelector('#main,#MiddleColumn,.MessageList,[role="main"],[class*="chatroomContent" i]');if(area)for(const el of area.querySelectorAll('video,audio,a[download],[class*="imageMessage" i] img,[class*="mediaMessage" i] img'))nodes.add(el.closest(selector)||el.parentElement);return[...nodes].filter(el=>!el.closest('.wam-tr,.wam-float,[contenteditable="true"]')&&![...nodes].some(parent=>parent!==el&&parent.contains(el)));}
   const reactionSelector='.Reactions,.reactions,.Reaction,.reaction,.ReactionButton,[data-reaction],[class*="Reaction"]';
   const customEmojiSelector='custom-emoji,[data-custom-emoji-id],[data-document-id].emoji,.custom-emoji,[class*="customEmoji"],[class*="CustomEmoji"]';
   function emojiValue(value){const v=String(value||'').trim();return v.length<=100&&/^[\p{Extended_Pictographic}\p{Regional_Indicator}\p{Emoji_Modifier}\u200d\ufe0e\ufe0f\u20e30-9#*\u{e0020}-\u{e007f}]+$/u.test(v)&&/[\p{Extended_Pictographic}\p{Regional_Indicator}\u20e3]/u.test(v)?v:'';}
@@ -1602,12 +1603,14 @@ if (location.host === 'web.telegram.org') {
 }
 // "保存到备注": the message, picture, video, voice note or file under the right-click, with who sent it and when, goes to
 // the app's notes. A message bubble inside the open conversation (never the chat list on the left):
-const MESSAGE_ROOT = WA_MESSAGES + ', #MiddleColumn .Message, .MessageList .Message, #MiddleColumn [id^="message-"], [role="main"] [role="row"], [data-message-id], [data-mid]';
+const MESSAGE_ROOT = WA_MESSAGES + ', #MiddleColumn .Message, .MessageList .Message, #MiddleColumn [id^="message-"], [role="main"] [data-scope="messages_table"], [role="main"] [role="row"], [data-message-id], [data-mid]';
 const messageAt = (el) => el?.closest?.(MESSAGE_ROOT) || null;
 const messageId = (root) => root?.getAttribute('data-id') || root?.id || '';
-// Pictures often sit under a transparent overlay, so look through everything at the click point
-const pictureAt = (x, y) => document.elementsFromPoint(x, y).find((el) => /^(IMG|VIDEO)$/.test(el.tagName) && (el.naturalWidth || el.videoWidth || el.width || 0) >= 60 && !el.closest('[class*="avatar" i]'));
-const bigPicture = (root) => [...root.querySelectorAll('img, video')].find((i) => (i.naturalWidth || i.videoWidth || 0) >= 60 && !i.closest('[class*="avatar" i], [class*="emoji" i], [class*="reaction" i]'));
+// Pictures often sit under a transparent overlay, so look through everything at the click point. Small ones on screen
+// (profile photos: Messenger's are 100 px files drawn at 28 px) are not the message's picture.
+const bigEnough = (el) => (el.naturalWidth || el.videoWidth || el.width || 0) >= 60 && el.getBoundingClientRect().width >= 60;
+const pictureAt = (x, y) => document.elementsFromPoint(x, y).find((el) => /^(IMG|VIDEO)$/.test(el.tagName) && bigEnough(el) && !el.closest('[class*="avatar" i]'));
+const bigPicture = (root) => [...root.querySelectorAll('img, video')].find((i) => bigEnough(i) && !i.closest('[class*="avatar" i], [class*="emoji" i], [class*="reaction" i]'));
 const looksLikeVoice = (root) => !!root.querySelector('[aria-label="Voice message"], [aria-label*="voice message" i], [aria-label*="语音"], [data-icon*="ptt"], [data-icon*="audio-play"], .Audio.voice, .Audio [class*="waveform" i], [class*="voice" i]');
 // Icon names: older WhatsApp uses data-icon="…", the new layout <svg><title>ic-…</title> (e.g. ic-videocam-filled)
 const iconNames = (root) => [...root.querySelectorAll('[data-icon], svg title')].map((n) => (n.tagName.toLowerCase() === 'title' ? n.textContent : n.getAttribute('data-icon'))).join(' ');
@@ -1629,6 +1632,22 @@ const kindOf = (root, media) => (looksLikeVoice(root) ? 'voice' : looksLikeVideo
 const DOWNLOAD_WORDS = /^(download|下载|下載|save as|另存为|lưu|unduh|скачать)/i;
 const pageDownloadItem = () => [...document.querySelectorAll('[role="menuitem"], .MenuItem, [role="menu"] [role="button"], [role="application"] li, [role="application"] [role="button"]')]
   .find((el) => shown(el) && !el.closest('.wam-notes-chip') && (DOWNLOAD_WORDS.test((el.getAttribute('aria-label') || el.textContent || '').trim()) || !!el.querySelector('.icon-download, [data-icon*="download"]')));
+// The Download button of the page's full-screen photo/video viewer (outside every message); it downloads just the one shown
+const viewerDownloadButton = () => [...document.querySelectorAll('[aria-label], [title], svg title')]
+  .map((el) => (el.tagName.toLowerCase() === 'title'
+    ? (/download/i.test(el.textContent) ? el.closest('button, [role="button"]') : null)
+    : (/^(download|下载|下載)$/i.test((el.getAttribute('aria-label') || el.getAttribute('title') || '').trim()) ? el.closest('button, [role="button"]') || el : null)))
+  .find((el) => el && shown(el) && !messageAt(el) && !el.closest('.wam-notes-chip, [role="menu"], [role="application"]'));
+// The big photo or video the viewer shows
+const viewerPicture = () => [...document.querySelectorAll('img, video')].filter((el) => !messageAt(el) && el.getBoundingClientRect().width >= 200 && (el.naturalWidth || el.videoWidth) >= 200).pop() || null;
+// One photo or video of an album (several in one message, e.g. WhatsApp's 2×2 grid): each is its own clickable tile
+function albumTile(root, target) {
+  const tiles = [...root.querySelectorAll('[role="button"]')].filter((t) => t.querySelector('[style*="background-image"], img') && !t.querySelector(':scope [role="button"] [style*="background-image"], :scope [role="button"] img') && t.getBoundingClientRect().width >= 60);
+  if (tiles.length < 2) return null;
+  return tiles.find((t) => t.contains(target)) || null;
+}
+// Media shown from another site (Facebook's pictures, videos and files) that the page may not copy: the app downloads it with the chat's own sign-in
+const fetchByApp = async (url) => { const r = await ipcRenderer.invoke('clips:fetch-url', { url }); if (!r?.ok) throw new Error(r?.error || '无法下载'); return r.data; };
 // Message text without menus, buttons or icon-font names (Telegram draws its menu inside the message)
 const cleanText = (node) => {
   const c = node.cloneNode(true);
@@ -1744,6 +1763,16 @@ async function pageDownload(control, long) {
   if (long) ipcRenderer.sendToHost('notes:captured', { notice: '正在下载影片，下载完成后会自动保存到备注…' });
   return { token: ready.data, ...(await waitForDownload(ready.data, long ? 600000 : 60000)) };
 }
+// A picture: copied off the screen, or (when the page may not copy it, e.g. Facebook's pictures) downloaded by the app
+async function pictureInto(out, pic) {
+  try { out.imageData = frameOf(pic); } catch { out.imageData = ''; }
+  if (out.imageData) return;
+  const src = pic.currentSrc || pic.src || '';
+  if (!/^https:/.test(src)) throw new Error('图片还没载入完成，请稍后再试');
+  const got = await fetchByApp(src);
+  if (!/^image\//.test(got.mime)) throw new Error('图片无法保存');
+  Object.assign(out, { fileToken: got.token, mime: got.mime });
+}
 async function captureForNotes(request) {
   try {
     // The chip passes what was under the right-click; by the time it is clicked the page's own menu covers that spot
@@ -1761,13 +1790,27 @@ async function captureForNotes(request) {
     const media = request.media || (request.root ? null : pictureAt(x, y)) || bigPicture(root);
     let kind = request.kind;
     // "保存到备注" on a photo, video, voice note or file without words saves that item itself
-    // (its words, e.g. a caption, are kept with it; a forwarded video's header is not a message to save as text)
-    if (kind === 'text' && !request.selection) kind = kindOf(root, media);
+    // (a message with words stays a text message; a forwarded video's header is not its words)
+    if (kind === 'text' && !request.selection && !parts.length) kind = kindOf(root, media);
     const out = { kind, text: request.selection || parts.join('\n'), author: author.slice(0, 120), time: String(time).slice(0, 60), imageData: '' };
+    const send = () => { out.text = String(out.text || '').slice(0, 20000); ipcRenderer.sendToHost('notes:captured', out); };
+    // A photo or video in the full-screen viewer, or one tile of an album opened in it: the viewer's Download gives just that one
+    const tile = request.tile?.isConnected ? request.tile : null;
+    const inViewer = !!viewerMedia || (!request.root && !messageAt(at) && !!request.media);
+    if ((inViewer || tile) && (kind === 'video' || kind === 'image')) {
+      // (after the page's menu has closed)
+      if (tile) { await new Promise((r) => setTimeout(r, 250)); press(tile); }
+      const shownMedia = kind !== 'image' ? null : tile ? await waitFor(viewerPicture, 4000) : (request.media || viewerMedia);
+      const button = kind === 'video' ? await waitFor(viewerDownloadButton, tile ? 4000 : 500) : null;
+      try {
+        if (button) { const got = await pageDownload(button, true); Object.assign(out, { fileToken: got.token, mime: got.mime || 'video/mp4' }); return send(); }
+        if (kind === 'image' && shownMedia) { await pictureInto(out, shownMedia); return send(); }
+      } finally { if (tile) closePageMenu(); }
+      if (tile) throw new Error(kind === 'video' ? '没有找到播放画面的下载按钮，请点开影片后在播放画面右键保存' : '图片还没载入完成，请稍后再试');
+    }
     if (kind === 'image') {
       if (!media) throw new Error('没有找到图片，请等图片载入完成');
-      out.imageData = frameOf(media);
-      if (!out.imageData) throw new Error('图片还没载入完成，请稍后再试');
+      await pictureInto(out, media);
     } else if (kind === 'video') {
       const video = (media?.tagName === 'VIDEO' && media) || root.querySelector('video'), src = video?.currentSrc || video?.src || '';
       try { out.imageData = video?.readyState >= 2 ? frameOf(video) : (media?.tagName === 'IMG' ? frameOf(media) : ''); } catch { out.imageData = ''; }
@@ -1779,6 +1822,11 @@ async function captureForNotes(request) {
         Object.assign(out, { fileToken: got.token, mime: got.mime || 'video/mp4' });
         out.text = String(out.text || '').slice(0, 20000);
         return ipcRenderer.sendToHost('notes:captured', out);
+      }
+      // A video file on another site (Facebook): the app downloads it
+      if (/^https:/.test(src) && location.host !== 'web.telegram.org') {
+        const got = await fetchByApp(src).catch(() => null);
+        if (got && /^video\//.test(got.mime)) { Object.assign(out, { fileToken: got.token, mime: got.mime }); return send(); }
       }
       // Otherwise try each place the whole file can come from, keeping the first that is a complete, playable video
       const tries = [];
@@ -1802,8 +1850,10 @@ async function captureForNotes(request) {
     } else if (kind === 'file') {
       // "Download" in the page's own menu is the surest; the button on the message may only open the file
       const control = (request.downloadItem?.isConnected && request.downloadItem) || (request.target && await menuDownloadItem(request.target, x, y)) || downloadControl(root);
-      if (!control) throw new Error('没有找到这个文件的下载按钮');
-      const got = await pageDownload(control, false);
+      // Messenger shows a file as a link to Facebook's file server
+      const link = !control && root.querySelector('a[href*="fbsbx.com"], a[href*="fbcdn.net"], a[download][href^="https:"]');
+      if (!control && !link) throw new Error('没有找到这个文件的下载按钮');
+      const got = control ? await pageDownload(control, false) : await fetchByApp(link.href);
       Object.assign(out, { fileToken: got.token, text: out.text || got.name || '', fileName: got.name });
     } else if (!out.text) out.text = cleanText(root);
     out.text = String(out.text || '').slice(0, 20000);
@@ -1821,8 +1871,13 @@ window.addEventListener('contextmenu', (event) => {
   const x = event.clientX, y = event.clientY, target = event.target;
   setTimeout(() => {
     const root = messageAt(target);
-    if (!event.defaultPrevented || !adapter() || !root) return;
-    const selection = String(window.getSelection() || '').slice(0, 20000), media = pictureAt(x, y) || bigPicture(root), kind = selection ? 'text' : kindOf(root, media);
+    // Also on the big photo or video of the page's full-screen viewer
+    const shownBig = !root ? pictureAt(x, y) : null, viewer = shownBig && shownBig.getBoundingClientRect().width >= 200 ? shownBig : null;
+    if (!event.defaultPrevented || !adapter() || (!root && !viewer)) return;
+    const selection = String(window.getSelection() || '').slice(0, 20000), media = viewer || pictureAt(x, y) || bigPicture(root);
+    // One tile of an album saves just that photo or video
+    const tile = root && !selection ? albumTile(root, target) : null;
+    const kind = viewer ? (viewer.tagName === 'VIDEO' ? 'video' : 'image') : selection ? 'text' : tile ? (/videocam|play-arrow|media-play|msg-video/i.test(iconNames(tile)) ? 'video' : 'image') : kindOf(root, media);
     const chip = document.createElement('div'); chip.className = 'wam-float wam-notes-chip';
     chip.style.cssText = 'position:fixed;z-index:2147483647;display:flex;gap:4px;padding:4px;background:#fff;border:1px solid rgba(0,0,0,.12);border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.2);font:13px/1.2 "Segoe UI","Microsoft YaHei",sans-serif';
     let menuItem = null;
@@ -1833,10 +1888,11 @@ window.addEventListener('contextmenu', (event) => {
       b.addEventListener('click', (e) => {
         e.preventDefault(); e.stopPropagation(); hideNotesChip();
         // A video (or file) goes through "Download" in the page's own menu when it has one; that click also closes the menu
-        const downloadItem = as === 'video' || as === 'file' ? (pageDownloadItem() || (menuItem?.isConnected ? menuItem : null)) : null;
-        captureForNotes({ kind: as, x, y, selection, root, target, media, downloadItem });
-        // Otherwise close the page's own menu that is still open
-        if (!downloadItem) closePageMenu();
+        // (not for an album tile or the viewer: the menu's Download there gives every item of the album)
+        const downloadItem = !tile && !viewer && (as === 'video' || as === 'file') ? (pageDownloadItem() || (menuItem?.isConnected ? menuItem : null)) : null;
+        // Otherwise close the page's own menu that is still open (never in the viewer: Esc would close the viewer itself)
+        if (!downloadItem && !viewer) closePageMenu();
+        captureForNotes({ kind: as, x, y, selection, root, target, media, downloadItem, tile });
       }, true);
       chip.append(b);
     };
