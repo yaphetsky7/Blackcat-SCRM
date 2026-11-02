@@ -1612,7 +1612,12 @@ const looksLikeVoice = (root) => !!root.querySelector('[aria-label="Voice messag
 const looksLikeVideo = (root) => !!root.querySelector('video, [data-icon*="media-play"], [data-icon*="msg-video"], [data-icon*="media-gif"], [aria-label*="Play video" i], [aria-label*="播放影片"], .message-media-duration');
 const downloadControl = (root) => root.querySelector('[aria-label^="Download" i], [title^="Download" i], [aria-label*="下载"], [title*="下载"], [data-icon*="download"], .File .file-icon, .File');
 const looksLikeFile = (root) => !looksLikeVoice(root) && !!(root.querySelector('.File, [data-icon*="document"], [data-icon^="doc-"], [aria-label*="document" i], [title*=".pdf" i], [title*=".doc" i], [title*=".xls" i], [title*=".zip" i]') || (downloadControl(root) && !bigPicture(root)));
-const kindOf = (root, media) => (looksLikeVoice(root) ? 'voice' : media && looksLikeVideo(root) ? 'video' : media ? 'image' : looksLikeFile(root) ? 'file' : 'text');
+const kindOf = (root, media) => (looksLikeVoice(root) ? 'voice' : looksLikeVideo(root) ? 'video' : media ? 'image' : looksLikeFile(root) ? 'file' : 'text');
+// The page's own "Download" in the menu it opened for this message (Telegram and WhatsApp both offer one for media);
+// using it saves a video that was never played
+const DOWNLOAD_WORDS = /^(download|下载|下載|save as|另存为|lưu|unduh|скачать)/i;
+const pageDownloadItem = () => [...document.querySelectorAll('[role="menuitem"], .MenuItem, [role="menu"] [role="button"], [role="application"] li, [role="application"] [role="button"]')]
+  .find((el) => shown(el) && !el.closest('.wam-notes-chip') && (DOWNLOAD_WORDS.test((el.getAttribute('aria-label') || el.textContent || '').trim()) || !!el.querySelector('.icon-download, [data-icon*="download"]')));
 // Message text without menus, buttons or icon-font names (Telegram draws its menu inside the message)
 const cleanText = (node) => {
   const c = node.cloneNode(true);
@@ -1634,7 +1639,8 @@ const frameOf = (pic) => {
 const AUDIO_HOOK = `(()=>{if(window.__blackcatAudio)return;const list=window.__blackcatAudio=[];const vids=window.__blackcatVideo=[];const keep=(u,type)=>{list.push({u,t:Date.now(),type});if(list.length>40)list.shift();};
 const make=URL.createObjectURL;URL.createObjectURL=function(o){const u=make.apply(this,arguments);try{if(o instanceof Blob&&String(o.type).startsWith('video/')&&o.size>0){vids.push({u,t:Date.now(),b:o});if(vids.length>3)vids.shift();}else if(o instanceof Blob&&/audio|ogg|opus|mpeg/i.test(o.type))keep(u,o.type);}catch{}return u;};
 const play=HTMLMediaElement.prototype.play;HTMLMediaElement.prototype.play=function(){try{const u=this.currentSrc||this.src;if(this instanceof HTMLAudioElement&&u&&!/^data:/.test(u))keep(u,'media');}catch{}return play.apply(this,arguments);};
-window.addEventListener('message',(e)=>{const q=e.source===window&&e.data&&e.data.__blackcatVideoAsk;if(!q)return;const v=vids.find((x)=>x.u===q.u)||(q.since?vids.filter((x)=>x.t>=q.since).pop():null);window.postMessage({__blackcatVideoBlob:{id:q.id,blob:v?v.b:null}},location.origin);});})()`;
+window.addEventListener('message',(e)=>{const q=e.source===window&&e.data&&e.data.__blackcatVideoAsk;if(!q)return;const v=vids.find((x)=>x.u===q.u)||(q.since?vids.filter((x)=>x.t>=q.since).pop():null);window.postMessage({__blackcatVideoBlob:{id:q.id,blob:v?v.b:null}},location.origin);});
+window.addEventListener('message',async(e)=>{const q=e.source===window&&e.data&&e.data.__blackcatFetchAsk;if(!q)return;let blob=null,error='';try{const parts=[];let at=0,total=-1,type='';for(let i=0;i<4000;i++){const r=await fetch(q.u,{headers:{Range:'bytes='+at+'-'}});if(!r.ok)throw Error('HTTP '+r.status);type=type||r.headers.get('content-type')||'';const b=await r.blob();if(r.status===200){parts.length=0;parts.push(b);break;}const t=Number(String(r.headers.get('content-range')||'').split('/').pop());if(t>0)total=t;if(!b.size)break;parts.push(b);at+=b.size;if(at>209715200)throw Error('200 MB');if(total<0||at>=total)break;}blob=new Blob(parts,{type});}catch(x){error=String(x&&x.message||x);}window.postMessage({__blackcatFetchBlob:{id:q.id,blob,error}},location.origin);});})()`;
 const voiceUrls = new Map(), videoClicks = new Map();
 if (/^web\.(whatsapp\.com|telegram\.org)$/.test(location.host)) {
   webFrame.executeJavaScript(AUDIO_HOOK).catch(() => {});
@@ -1647,13 +1653,17 @@ if (/^web\.(whatsapp\.com|telegram\.org)$/.test(location.host)) {
     (async () => { for (let i = 0; i < 40; i++) { await new Promise((r) => setTimeout(r, 250)); const u = await webFrame.executeJavaScript(`(window.__blackcatAudio||[]).filter(x=>x.t>=${since}).map(x=>x.u).pop()||''`).catch(() => ''); if (u) { voiceUrls.set(id, u); return; } } })();
   }, true);
 }
-// A video blob kept by the page-side hook, by its link or as the newest one since the video was clicked
-const keptVideo = (u, since) => new Promise((resolve) => {
-  const id = Math.random().toString(36).slice(2), timer = setTimeout(() => { window.removeEventListener('message', got); resolve(null); }, 3000);
-  function got(event) { const r = event.source === window && event.data?.__blackcatVideoBlob; if (!r || r.id !== id) return; clearTimeout(timer); window.removeEventListener('message', got); resolve(r.blob || null); }
+// Ask the page-side hook for a blob and wait for its answer
+const askPage = (ask, answer, payload, wait) => new Promise((resolve) => {
+  const id = Math.random().toString(36).slice(2), timer = setTimeout(() => { window.removeEventListener('message', got); resolve(null); }, wait);
+  function got(event) { const r = event.source === window && event.data?.[answer]; if (!r || r.id !== id) return; clearTimeout(timer); window.removeEventListener('message', got); resolve(r); }
   window.addEventListener('message', got);
-  window.postMessage({ __blackcatVideoAsk: { id, u: u || '', since: since || 0 } }, location.origin);
+  window.postMessage({ [ask]: { id, ...payload } }, location.origin);
 });
+// A video blob kept by the page-side hook, by its link or as the newest one since the video was clicked
+const keptVideo = async (u, since) => (await askPage('__blackcatVideoAsk', '__blackcatVideoBlob', { u: u || '', since: since || 0 }, 3000))?.blob || null;
+// The whole file behind a media link, fetched by the page itself (Telegram's media links are answered by its service worker)
+const pageFetch = async (u) => { const r = await askPage('__blackcatFetchAsk', '__blackcatFetchBlob', { u }, 300000); if (r?.error) throw new Error(/200 MB/.test(r.error) ? '影片超过 200 MB，无法保存' : r.error); return r?.blob || null; };
 const MAX_VIDEO = 200 * 1024 * 1024;
 // Telegram serves media through links that answer one byte range at a time, so a plain fetch gets only the first piece
 // (the cut-off file then never plays). Ask for every piece until the whole file is in.
@@ -1696,18 +1706,29 @@ function videoType(b) {
   return box(b, 8) === 'qt  ' ? 'video/quicktime' : 'video/mp4';
 }
 // Files: the page's own download button is clicked once the main process is ready to catch that one download
-const waitForDownload = (token) => new Promise((resolve, reject) => {
-  const timer = setTimeout(() => { ipcRenderer.removeListener('clips:download-done', done); reject(new Error('文件没有开始下载，请先在聊天里点一下文件让它下载，再保存')); }, 60000);
+const waitForDownload = (token, wait) => new Promise((resolve, reject) => {
+  const timer = setTimeout(() => { ipcRenderer.removeListener('clips:download-done', done); reject(new Error('文件没有开始下载，请先在聊天里点一下文件让它下载，再保存')); }, wait);
   function done(_e, r) { if (r?.token !== token) return; clearTimeout(timer); ipcRenderer.removeListener('clips:download-done', done); r.error ? reject(new Error(r.error)) : resolve(r); }
   ipcRenderer.on('clips:download-done', done);
 });
+// Click the page's own download (a button on the message or "Download" in its menu) and catch that one download.
+// A video can take minutes: Telegram first loads the whole file, then hands it over.
+async function pageDownload(control, long) {
+  const ready = await ipcRenderer.invoke('clips:expect-download', { long });
+  if (!ready?.ok) throw new Error(ready?.error || '无法保存文件');
+  press(control.closest('button, [role="button"], [role="menuitem"], .MenuItem, li, a') || control);
+  if (long) ipcRenderer.sendToHost('notes:captured', { notice: '正在下载影片，下载完成后会自动保存到备注…' });
+  return { token: ready.data, ...(await waitForDownload(ready.data, long ? 600000 : 60000)) };
+}
 async function captureForNotes(request) {
   try {
     // The chip passes what was under the right-click; by the time it is clicked the page's own menu covers that spot
     const x = Number(request.x) || 0, y = Number(request.y) || 0, at = request.target || document.elementFromPoint(x, y);
     if (!at) throw new Error('没有找到这条消息');
     // Selected text can be saved from anywhere; otherwise the click must be on a message (an empty stand-in keeps the lookups below simple)
-    if (!request.root && !messageAt(at) && (!request.selection || request.kind !== 'text')) throw new Error('请在打开的对话里右键某条消息');
+    // A photo or video open in the page's full-screen viewer is outside any message but can be saved as it is
+    const viewerMedia = !request.root && !messageAt(at) && /^(image|video)$/.test(request.kind) ? pictureAt(x, y) : null;
+    if (!request.root && !messageAt(at) && !viewerMedia && (!request.selection || request.kind !== 'text')) throw new Error('请在打开的对话里右键某条消息');
     const root = request.root || messageAt(at) || document.createElement('div');
     const ad = adapter(), parts = ad ? [...root.querySelectorAll(ad.messages)].filter((n) => !ad.skip?.(n)).map(cleanText).filter(Boolean) : [];
     const pre = (root.querySelector('[data-pre-plain-text]')?.getAttribute('data-pre-plain-text') || '').match(/^\[([^\]]*)\]\s*(.*?):\s*$/);
@@ -1716,7 +1737,8 @@ async function captureForNotes(request) {
     const media = request.media || (request.root ? null : pictureAt(x, y)) || bigPicture(root);
     let kind = request.kind;
     // "保存到备注" on a photo, video, voice note or file without words saves that item itself
-    if (kind === 'text' && !request.selection && !parts.length) kind = kindOf(root, media);
+    // (its words, e.g. a caption, are kept with it; a forwarded video's header is not a message to save as text)
+    if (kind === 'text' && !request.selection) kind = kindOf(root, media);
     const out = { kind, text: request.selection || parts.join('\n'), author: author.slice(0, 120), time: String(time).slice(0, 60), imageData: '' };
     if (kind === 'image') {
       if (!media) throw new Error('没有找到图片，请等图片载入完成');
@@ -1724,12 +1746,20 @@ async function captureForNotes(request) {
       if (!out.imageData) throw new Error('图片还没载入完成，请稍后再试');
     } else if (kind === 'video') {
       const video = (media?.tagName === 'VIDEO' && media) || root.querySelector('video'), src = video?.currentSrc || video?.src || '';
-      // Try each place the whole file can come from, keeping the first that is a complete, playable video
+      try { out.imageData = video?.readyState >= 2 ? frameOf(video) : (media?.tagName === 'IMG' ? frameOf(media) : ''); } catch { out.imageData = ''; }
+      // Best: the page's own "Download" (no need to play the video first)
+      if (request.downloadItem) {
+        const got = await pageDownload(request.downloadItem, true);
+        Object.assign(out, { fileToken: got.token, mime: got.mime || 'video/mp4' });
+        out.text = String(out.text || '').slice(0, 20000);
+        return ipcRenderer.sendToHost('notes:captured', out);
+      }
+      // Otherwise try each place the whole file can come from, keeping the first that is a complete, playable video
       const tries = [];
-      if (/^https?:/.test(src)) tries.push(() => fetchWhole(src));
+      if (/^https?:/.test(src)) tries.push(async () => blobBytes(await pageFetch(src)), () => fetchWhole(src));
       if (src.startsWith('blob:')) tries.push(async () => blobBytes(await (await fetch(src)).blob()), async () => blobBytes(await keptVideo(src)));
       if (videoClicks.has(messageId(root))) tries.push(async () => blobBytes(await keptVideo('', videoClicks.get(messageId(root)))));
-      if (!tries.length) throw new Error('请先点开播放这段影片，加载后再保存');
+      if (!tries.length) throw new Error('影片还没载入：请右键影片，在出现的菜单旁点「🎬 保存影片到备注」');
       let got = null, problem = null;
       for (const attempt of tries) {
         try { const r = await attempt(); if (r?.bytes?.length && videoType(r.bytes)) { got = r; break; } } catch (error) { problem = error; }
@@ -1737,7 +1767,6 @@ async function captureForNotes(request) {
       if (!got) throw new Error(problem && /200 MB/.test(problem.message) ? problem.message : '影片还没完整载入：请先点开把影片播放一遍（或等它下载完），再保存');
       if (got.bytes.length > MAX_VIDEO) throw new Error('影片超过 200 MB，无法保存');
       out.videoBytes = got.bytes; out.mime = videoType(got.bytes);
-      out.imageData = video?.readyState >= 2 ? frameOf(video) : (media?.tagName === 'IMG' ? frameOf(media) : '');
     } else if (kind === 'voice') {
       const src = voiceUrls.get(messageId(root)) || root.querySelector('audio')?.currentSrc || '';
       if (!src) throw new Error('请先播放这段语音（播一下就行），再保存');
@@ -1745,13 +1774,10 @@ async function captureForNotes(request) {
       out.audioBytes = new Uint8Array(await blob.arrayBuffer()); out.mime = blob.type || 'audio/ogg';
       out.text = out.text || (root.querySelector('[aria-label*="Voice message" i]') ? '' : '');
     } else if (kind === 'file') {
-      const control = downloadControl(root);
+      const control = downloadControl(root) || request.downloadItem;
       if (!control) throw new Error('没有找到这个文件的下载按钮');
-      const ready = await ipcRenderer.invoke('clips:expect-download');
-      if (!ready?.ok) throw new Error(ready?.error || '无法保存文件');
-      press(control.closest('button, [role="button"], a') || control);
-      const got = await waitForDownload(ready.data);
-      Object.assign(out, { fileToken: ready.data, text: out.text || got.name || '', fileName: got.name });
+      const got = await pageDownload(control, false);
+      Object.assign(out, { fileToken: got.token, text: out.text || got.name || '', fileName: got.name });
     } else if (!out.text) out.text = cleanText(root);
     out.text = String(out.text || '').slice(0, 20000);
     ipcRenderer.sendToHost('notes:captured', out);
@@ -1771,15 +1797,18 @@ window.addEventListener('contextmenu', (event) => {
     const selection = String(window.getSelection() || '').slice(0, 20000), media = pictureAt(x, y) || bigPicture(root), kind = selection ? 'text' : kindOf(root, media);
     const chip = document.createElement('div'); chip.className = 'wam-float wam-notes-chip';
     chip.style.cssText = 'position:fixed;z-index:2147483647;display:flex;gap:4px;padding:4px;background:#fff;border:1px solid rgba(0,0,0,.12);border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.2);font:13px/1.2 "Segoe UI","Microsoft YaHei",sans-serif';
+    let menuItem = null; setTimeout(() => { menuItem = pageDownloadItem(); }, 120);
     const b = document.createElement('button'); b.type = 'button';
     b.textContent = selection ? '📌 保存选中文字' : { voice: '🎤 保存语音到备注', video: '🎬 保存影片到备注', image: '🖼 保存图片到备注', file: '📄 保存文件到备注' }[kind] || '📌 保存到备注';
     b.style.cssText = 'border:0;border-radius:6px;padding:6px 10px;background:#3370ff;color:#fff;cursor:pointer;font:inherit;white-space:nowrap';
     b.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); }, true);
     b.addEventListener('click', (e) => {
       e.preventDefault(); e.stopPropagation(); hideNotesChip();
-      captureForNotes({ kind, x, y, selection, root, target, media });
-      // Close the page's own menu that is still open
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }));
+      // A video (or file) goes through "Download" in the page's own menu when it has one; that click also closes the menu
+      const downloadItem = kind === 'video' || kind === 'file' ? (pageDownloadItem() || (menuItem?.isConnected ? menuItem : null)) : null;
+      captureForNotes({ kind, x, y, selection, root, target, media, downloadItem });
+      // Otherwise close the page's own menu that is still open
+      if (!downloadItem) document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }));
     }, true);
     chip.append(b); document.documentElement.append(chip);
     // Sit just above-left of the click, where the platform's own menu (which opens down-right) does not cover it

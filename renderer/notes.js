@@ -44,6 +44,7 @@
   }
   async function saveClip(accountId, data) {
     if (data?.error) return toast(data.error, true);
+    if (data?.notice) return toast(t(data.notice));
     const context = contexts.get(accountId);
     if (!context?.key || context.ambiguous) return toast(t('打开一个对话，即可添加备注。'), true);
     const r = await window.api.clipAdd({ accountId, chatKey: context.key, title: context.title, kind: data.kind, text: data.text, author: data.author, time: data.time, imageData: data.imageData, videoBytes: data.videoBytes, audioBytes: data.audioBytes, fileToken: data.fileToken, mime: data.mime });
