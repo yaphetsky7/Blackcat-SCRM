@@ -1,0 +1,27 @@
+'use strict';
+// Private bucket only. Credentials are read on the backend, never included in desktop builds.
+const crypto = require('crypto');
+const digest = b => crypto.createHash('sha256').update(b).digest('hex');
+const hmac = (key, text) => crypto.createHmac('sha256', key).update(text).digest();
+function createR2(env = process.env, fetchImpl = fetch) {
+  const account = env.R2_ACCOUNT_ID || '', bucket = env.R2_BUCKET || '', access = env.R2_ACCESS_KEY_ID || '', secret = env.R2_SECRET_ACCESS_KEY || '';
+  const configured = /^[a-f0-9]{32}$/.test(account) && /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(bucket) && !!access && !!secret;
+  async function request(method, key, body) {
+    if (!configured) throw Object.assign(Error('云储存尚未接通，请联系管理员完成 R2 配置'), { status: 503 });
+    const host = account + '.r2.cloudflarestorage.com';
+    const uri = '/' + bucket + '/' + key.split('/').map(p => encodeURIComponent(p).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase())).join('/');
+    const date = new Date().toISOString().replace(/[:-]|\.\d{3}/g, ''), day = date.slice(0, 8), payload = digest(body || Buffer.alloc(0));
+    const headers = { host, 'x-amz-content-sha256': payload, 'x-amz-date': date };
+    const names = Object.keys(headers).sort(), signed = names.join(';');
+    const canonical = [method, uri, '', names.map(n => n + ':' + headers[n] + '\n').join(''), signed, payload].join('\n');
+    const scope = day + '/auto/s3/aws4_request';
+    const keyDate = hmac('AWS4' + secret, day), keyRegion = hmac(keyDate, 'auto'), keyService = hmac(keyRegion, 's3');
+    const signature = hmac(hmac(keyService, 'aws4_request'), 'AWS4-HMAC-SHA256\n' + date + '\n' + scope + '\n' + digest(canonical)).toString('hex');
+    headers.authorization = 'AWS4-HMAC-SHA256 Credential=' + access + '/' + scope + ', SignedHeaders=' + signed + ', Signature=' + signature;
+    const res = await fetchImpl('https://' + host + uri, { method, headers, body: method === 'PUT' ? body : undefined, redirect: 'error', signal: AbortSignal.timeout(90000) });
+    if (!res.ok) { await res.body?.cancel(); throw Object.assign(Error('R2 储存请求失败（' + res.status + '），请稍后重试或联系管理员'), { status: 502 }); }
+    return res;
+  }
+  return { configured, put: async (key, body) => { const r = await request('PUT', key, body); await r.body?.cancel(); }, get: async key => Buffer.from(await (await request('GET', key)).arrayBuffer()), delete: async key => { const r = await request('DELETE', key); await r.body?.cancel(); } };
+}
+module.exports = { createR2 };

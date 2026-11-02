@@ -75,7 +75,9 @@ function createLicense({ dataDir, safeStorage, defaultServer = '', appVersion = 
   const limits = () => (loggedIn() ? saved.profile.limits : null);
 
   setInterval(() => { refresh(); }, REFRESH_MS).unref?.();
-  return { login, logout, refresh, state, relay, limits, loggedIn };
+  // Main-process only; never expose this connection object through IPC.
+  const cloudConnection = () => loggedIn() ? { server: server(), token: token() } : null;
+  return { login, logout, refresh, state, relay, limits, loggedIn, cloudConnection };
 }
 
 module.exports = { createLicense };

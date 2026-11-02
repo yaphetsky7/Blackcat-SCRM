@@ -152,7 +152,7 @@ function drawPlans() {
     const msg = document.createElement('span'); msg.className = 'muted';
     const save = document.createElement('button'); save.className = 'primary'; save.type = 'submit'; save.textContent = '保存配套';
     const foot = document.createElement('div'); foot.className = 'row'; foot.append(save, msg);
-    form.append(h, grid, extra, feats, foot);
+    const cloud = document.createElement('p'); cloud.className = 'muted'; cloud.textContent = p.cloud_bytes ? '云备份：' + (p.cloud_bytes / 1e9) + ' GB（同一客户所有电脑共用）' : '云备份：不包含；可使用本地备份'; form.append(h, grid, cloud, extra, feats, foot);
     form.addEventListener('submit', async (e) => {
       e.preventDefault(); const f = form.elements;
       const body = { id: p.id, name: f.name.value, extra_allowed: f.extra_allowed.checked, features: Object.fromEntries(Object.keys(FEATURE_NAMES).map((k) => [k, f['f_' + k].checked])) };

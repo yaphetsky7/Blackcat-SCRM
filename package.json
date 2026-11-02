@@ -1,7 +1,7 @@
 {
   "name": "blackcat-crm",
   "productName": "黑猫SCRM",
-  "version": "1.15.2",
+  "version": "1.16.0",
   "description": "黑猫SCRM 多平台聊天与客户管理",
   "main": "main.js",
   "blackcatServer": "https://api.blackcatscrm.com",
@@ -55,7 +55,11 @@
       "guide-figures.js",
       "license.js",
       "app-update.js",
-      "translation-shortcut.js"
+      "translation-shortcut.js",
+      "cloud-format.js",
+      "cloud-data.js",
+      "cloud-worker.js",
+      "cloud-main.js"
     ],
     "win": {
       "target": [

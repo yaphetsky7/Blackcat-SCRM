@@ -168,6 +168,9 @@ async function prepareLine(partition) {
 }
 
 let win;
+let cloudRestoreError = '';
+try { require('./cloud-data').applyPending(app.getPath('userData'), license.limits()?.accounts ?? 0, license.state().profile?.username || ''); }
+catch (e) { cloudRestoreError = e.message; }
 registerAI({ app, ipcMain, dialog, getWindow: () => win, getKey: () => claudeAccess().apiKey, getBaseURL: () => claudeAccess().baseURL, getLimits: () => license.limits(), loadAccounts, protect: (value) => { if (!safeStorage.isEncryptionAvailable()) throw Error('系统加密尚未就绪，请重新打开软件'); return encodeSecret(value); }, reveal: decodeSecret, getTranscription: () => ({ endpoint: settings.transcriptionEndpoint, model: settings.transcriptionModel, key: decodeSecret(settings.transcriptionKey) }) });
 
 function createWindow() {
@@ -589,7 +592,9 @@ require('./app-assistant').registerAssistant({app,ipcMain,getWindow:()=>win,getK
   getAccount:()=>{const s=license.state();return s.loggedIn?{profile:s.profile,catalog:s.catalog,ownClaudeKey:!!decodeSecret(settings.claudeKey)&&settings.claudeMode!=='points',accountsUsed:loadAccounts().length}:null;}});
 ipcMain.handle('help:guide',async e=>{if(e.sender!==win?.webContents)return{ok:false,error:'无权打开教程'};const error=await shell.openPath(path.join(__dirname,'assets','黑猫SCRM使用教程.pdf'));return error?{ok:false,error}:{ok:true};});
 const backupService=require('./backup-main').registerBackup({ app, ipcMain, dialog, shell, getWindow: () => win, loadAccounts, session, managedGuests, net });
-require('./backup-reader').registerBackupReader({app,ipcMain,protocol,dialog,getWindow:()=>win,getFolder:()=>backupService.state().folder,getAccounts:loadAccounts,resolveIdentity:backupService.identityFor,removeLive:request=>backupService.removeRecords(request),isBusy:()=>backupService.isBusy()});
+const cloudService = require('./cloud-main').registerCloud({ app, ipcMain, dialog, shell, getWindow: () => win, license, backupService });
+app.whenReady().then(() => { if (cloudRestoreError) dialog.showErrorBox('云备份恢复未完成', cloudRestoreError + '\n原资料已保留，请检查后重新打开软件。'); });
+require('./backup-reader').registerBackupReader({app,ipcMain,protocol,dialog,getWindow:()=>win,getFolder:()=>backupService.state().folder,getCloudFolder:()=>cloudService.downloadedFolder(),getAccounts:loadAccounts,resolveIdentity:backupService.identityFor,removeLive:request=>backupService.removeRecords(request),isBusy:()=>backupService.isBusy()});
 
 ipcMain.on('badge:total', (_e, total) => {
   if (!win) return;

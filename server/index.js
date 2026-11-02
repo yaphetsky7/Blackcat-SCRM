@@ -17,6 +17,7 @@ const MAX_OUTPUT_TOKENS = 64000;
 const FEATURE_NEEDS = { translate: 'translate', assistant: 'assistant', ai: 'aiReply' };
 
 const store = openStore(DATA_DIR);
+const cloudBackup = require('./cloud-backup').createCloudBackup({ store });
 // Installers are published from the desktop app's build folder (DIST_DIR, default ../dist)
 const updates = createUpdates({ dataDir: DATA_DIR, distDir: path.resolve(process.env.DIST_DIR || path.join(__dirname, '..', 'dist')) });
 const adminSessions = new Map(); // token -> expiry
@@ -59,6 +60,7 @@ async function appApi(req, res, url) {
   if (url.pathname === '/api/logout' && req.method === 'POST') { store.logout(bearer(req)); return send(res, 200, { ok: true }); }
   const problem = store.status(found.user);
   if (problem) return fail(res, 403, problem);
+  if (url.pathname.startsWith('/api/cloud/')) return cloudBackup.route(req, res, url, found, { json, readBody, send });
   if (url.pathname === '/api/me' && req.method === 'GET') return send(res, 200, { ok: true, profile: store.profile(found.user), catalog: store.catalog() });
   return fail(res, 404, '没有这个接口');
 }

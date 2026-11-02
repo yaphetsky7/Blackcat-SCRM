@@ -15,6 +15,7 @@ Environment=DATA_DIR=/var/lib/blackcat-server
 Environment=DIST_DIR=/var/lib/blackcat-server/dist
 Environment=ADMIN_COOKIE_SECURE=1
 EnvironmentFile=-/etc/blackcat-server/claude.env
+EnvironmentFile=-/etc/blackcat-server/r2.env
 ExecStart=/opt/blackcat-node/bin/node /opt/blackcat-server/current/server/index.js
 Restart=on-failure
 RestartSec=5

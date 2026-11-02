@@ -66,7 +66,9 @@ function openStore(dataDir) {
   const setting = (key, fallback) => { const r = one('SELECT value FROM settings WHERE key = ?', key); return r ? JSON.parse(r.value) : fallback; };
   const setSetting = (key, value) => run('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', key, JSON.stringify(value));
 
-  const plans = () => all('SELECT data FROM plans ORDER BY sort').map((r) => JSON.parse(r.data));
+  // Apply cloud entitlements to existing installations without changing customer prices.
+  const cloudQuota = id => ({ business: 100e9, enterprise: 500e9 }[id] || 0);
+  const plans = () => all('SELECT data FROM plans ORDER BY sort').map((r) => { const p = JSON.parse(r.data); return { ...p, cloud_bytes: cloudQuota(p.id), features: { ...p.features, cloudBackup: cloudQuota(p.id) > 0 } }; });
   const plan = (id) => plans().find((p) => p.id === id) || null;
   function savePlan(input) {
     const old = plan(input.id);
@@ -97,8 +99,8 @@ function openStore(dataDir) {
 
   function limits(u) {
     const p = plan(u.plan) || DEFAULT_PLANS[0];
-    if (u.unlimited) return { accounts: -1, devices: -1, kbLimit: -1, features: { ...ALL_FEATURES } };
-    return { accounts: p.included_accounts < 0 ? -1 : p.included_accounts + (p.extra_allowed ? u.extra_accounts : 0), devices: p.devices, kbLimit: p.kb_limit, features: { ...p.features } };
+    if (u.unlimited) return { accounts: -1, devices: -1, kbLimit: -1, cloudBytes: cloudQuota(u.plan), features: { ...ALL_FEATURES, cloudBackup: cloudQuota(u.plan) > 0 } };
+    return { accounts: p.included_accounts < 0 ? -1 : p.included_accounts + (p.extra_allowed ? u.extra_accounts : 0), devices: p.devices, kbLimit: p.kb_limit, cloudBytes: cloudQuota(u.plan), features: { ...p.features } };
   }
   function monthUsage(userId, since = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime()) {
     return one('SELECT COUNT(*) AS requests, COALESCE(SUM(cost_usd), 0) AS cost, COALESCE(SUM(points), 0) AS points FROM usage WHERE user_id = ? AND at >= ?', userId, since);
@@ -115,7 +117,7 @@ function openStore(dataDir) {
     const multiplier = setting('multiplier', 1);
     return {
       plans: plans().map((p) => ({ id: p.id, name: p.name, priceMonth: p.price_month, priceYear: p.price_year, accounts: p.included_accounts, extraAccounts: p.extra_allowed ? { allowed: true, priceEach: p.extra_price } : { allowed: false },
-        devices: p.devices, monthlyPoints: p.monthly_points, knowledgeBases: p.kb_limit, features: p.features })),
+        devices: p.devices, monthlyPoints: p.monthly_points, knowledgeBases: p.kb_limit, cloudBytes: cloudQuota(p.id), features: p.features })),
       points: { perUSD: 1000 * multiplier, translateEach: [0.1 * multiplier, 0.3 * multiplier], aiReplyEach: [0.5 * multiplier, 2 * multiplier],
         rules: '按 AI 实际用量扣点；先扣每月配套点数，再扣充值点数；配套点数每月按开通日重置，充值点数不过期；Google 翻译和客户自己的 Claude Key 不扣点；点数用完时翻译自动改用 Google，AI 自动回复暂停。' },
       upgrade: '升级配套、加购账号或充值点数请联系客服，由客服在后台开通。',
