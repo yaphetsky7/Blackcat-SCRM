@@ -5,9 +5,16 @@ const digest = b => crypto.createHash('sha256').update(b).digest('hex');
 const hmac = (key, text) => crypto.createHmac('sha256', key).update(text).digest();
 function createR2(env = process.env, fetchImpl = fetch) {
   const account = env.R2_ACCOUNT_ID || '', bucket = env.R2_BUCKET || '', access = env.R2_ACCESS_KEY_ID || '', secret = env.R2_SECRET_ACCESS_KEY || '';
-  const configured = /^[a-f0-9]{32}$/.test(account) && /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(bucket) && !!access && !!secret;
+  const gateway = String(env.R2_GATEWAY_URL || '').replace(/\/$/, ''), gatewaySecret = env.R2_GATEWAY_SECRET || '';
+  const useGateway = /^https:\/\/[^/?#]+\/api\/private-backup$/.test(gateway) && /^[a-f0-9]{64}$/.test(gatewaySecret);
+  const configured = useGateway || /^[a-f0-9]{32}$/.test(account) && /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(bucket) && !!access && !!secret;
   async function request(method, key, body) {
     if (!configured) throw Object.assign(Error('云储存尚未接通，请联系管理员完成 R2 配置'), { status: 503 });
+    if (useGateway) {
+      const res = await fetchImpl(gateway + '?key=' + encodeURIComponent(key), { method, headers: { authorization: 'Bearer ' + gatewaySecret, 'content-type': 'application/octet-stream' }, body: method === 'PUT' ? body : undefined, redirect: 'error', signal: AbortSignal.timeout(90000) });
+      if (!res.ok) { await res.body?.cancel(); throw Object.assign(Error('私有 R2 连接请求失败（' + res.status + '）'), { status: 502 }); }
+      return res;
+    }
     const host = account + '.r2.cloudflarestorage.com';
     const uri = '/' + bucket + '/' + key.split('/').map(p => encodeURIComponent(p).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase())).join('/');
     const date = new Date().toISOString().replace(/[:-]|\.\d{3}/g, ''), day = date.slice(0, 8), payload = digest(body || Buffer.alloc(0));
