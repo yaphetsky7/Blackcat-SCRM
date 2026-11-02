@@ -1,6 +1,6 @@
 // Illustrated bilingual tutorial: shared by the PDF builder and the assistant's tutorial cards.
 // Each figure's steps follow the numbered markers drawn on assets/guide/<img>.jpg.
-module.exports = { version: '1.14.6', chapters: [
+module.exports = { version: '1.45', chapters: [
 { id: 'start', zh: '安装与第一次使用', en: 'Installation and first launch',
   keywords: /安装|登录|扫码|新建|二维码|第一次|开始|install|login|log in|sign in|qr|first|start|new session/i,
   introZh: '黑猫SCRM 把多个平台的账号放在同一个窗口里。每个账号独立登录，聊天界面仍是各平台的网页版。',
@@ -105,10 +105,10 @@ module.exports = { version: '1.14.6', chapters: [
   tipZh: '在分组里可以多选后批量删除。发送前请确认当前打开的是正确的客户。',
   tipEn: 'You can multi-select replies in a group to delete them together. Make sure the right customer chat is open before sending.' },
 
-{ id: 'contacts', zh: '联系人与客户备注', en: 'Contacts and customer notes',
-  keywords: /联系人|备注|客户资料|contact|note|customer/i,
-  introZh: '联系人功能支持 WhatsApp 和 Telegram。“账号联系人”自动读取，“我的联系人”可手动添加或 Excel 导入。',
-  introEn: 'Contacts work with WhatsApp and Telegram. "Account contacts" are read automatically. "My contacts" are added by hand or from Excel.',
+{ id: 'contacts', zh: '联系人、客户备注与保存聊天', en: 'Contacts, notes and saving chats',
+  keywords: /联系人|备注|客户资料|保存到备注|已保存的消息|contact|note|customer|save to notes/i,
+  introZh: '联系人功能支持 WhatsApp 和 Telegram。“账号联系人”自动读取，“我的联系人”可手动添加或 Excel 导入。聊天里的消息、图片、影片、语音和文件可以保存到客户备注（WhatsApp、Telegram、Messenger），只存在本机。',
+  introEn: 'Contacts work with WhatsApp and Telegram. "Account contacts" are read automatically. "My contacts" are added by hand or from Excel. Messages, photos, videos, voice notes and files can be saved into the customer\'s notes (WhatsApp, Telegram, Messenger), kept only on this computer.',
   figures: [
     { img: 'contacts', zh: '账号联系人', en: 'Account contacts', steps: [
       ['点击右侧“联系人”。', 'Click "Contacts" on the right bar.'],
@@ -131,6 +131,17 @@ module.exports = { version: '1.14.6', chapters: [
       ['点击右侧“备注”。', 'Click "Notes" on the right bar.'],
       ['显示当前账号和当前客户。', 'Shows the current account and customer.'],
       ['先在聊天中打开一位客户，再填写备注；切换客户会自动显示对应备注。', 'Open a customer chat first, then write the note. Switching customers shows their own note.'],
+    ] },
+    { img: 'notes-save', zh: '保存聊天到备注', en: 'Save chat items to notes', steps: [
+      ['在聊天里右键要保存的消息、图片、影片、语音或文件，影片不用先播放。相册里只保存你右键的那一个；在全屏播放画面里右键也能保存。', 'In a chat, right-click the message, photo, video, voice note or file to keep. No need to play a video first. In an album only the one you right-click is saved; you can also right-click in the full-screen player.'],
+      ['点蓝色“保存…到备注”按钮。Messenger 这类保留普通右键菜单的平台，在黑猫的右键菜单里选“保存到备注”。', 'Click the blue "Save … to notes" button. On platforms that keep the normal right-click menu (such as Messenger), choose "Save to notes" in 黑猫\'s menu.'],
+      ['平台自己的菜单照常可用。影片和文件在后台下载，完成后自动存进备注，会提示“已保存到备注”。', 'The platform\'s own menu still works. Videos and files download in the background and go into notes when done; you will see "Saved to notes".'],
+    ] },
+    { img: 'notes-saved', zh: '已保存的消息', en: 'Saved items', steps: [
+      ['“备注”下方的“已保存的消息”：最新的在上面，显示发送者和时间。', '"Saved items" under Notes: newest first, with the sender and time.'],
+      ['每一项都可以写自己的备注，停止输入后自动保存。', 'Write your own note on any item; it saves when you stop typing.'],
+      ['影片和语音直接在这里播放；点图片或文件会用电脑打开。', 'Play videos and voice notes right here; click a photo or file to open it on the computer.'],
+      ['删除只删除本机保存的这一项，不影响聊天。', 'Delete removes only this saved copy on the computer, not the chat.'],
     ] },
   ],
   tipZh: '同名客户不能当作同一个人。电话号码或 username 才是唯一标识。',
