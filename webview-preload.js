@@ -1628,20 +1628,72 @@ const frameOf = (pic) => {
   canvas.getContext('2d').drawImage(pic, 0, 0, canvas.width, canvas.height);
   return canvas.toDataURL('image/jpeg', 0.9);
 };
-// Voice notes: the pages only fetch the audio when it is played (WhatsApp as a blob, Telegram through its own media
-// link). A page-side hook notes every audio source, and a click on a voice note ties the next new one to that message.
-const AUDIO_HOOK = `(()=>{if(window.__blackcatAudio)return;const list=window.__blackcatAudio=[];const keep=(u,type)=>{list.push({u,t:Date.now(),type});if(list.length>40)list.shift();};
-const make=URL.createObjectURL;URL.createObjectURL=function(o){const u=make.apply(this,arguments);try{if(o instanceof Blob&&/audio|ogg|opus|mpeg/i.test(o.type))keep(u,o.type);}catch{}return u;};
-const play=HTMLMediaElement.prototype.play;HTMLMediaElement.prototype.play=function(){try{const u=this.currentSrc||this.src;if(this instanceof HTMLAudioElement&&u&&!/^data:/.test(u))keep(u,'media');}catch{}return play.apply(this,arguments);};})()`;
-const voiceUrls = new Map();
+// Voice notes and videos: the pages only fetch them when played (WhatsApp as a blob, Telegram through its own media
+// link). A page-side hook notes every audio source and keeps the last few video blobs (WhatsApp drops its blob link when
+// the viewer closes), and a click on a voice note or video ties the next new one to that message.
+const AUDIO_HOOK = `(()=>{if(window.__blackcatAudio)return;const list=window.__blackcatAudio=[];const vids=window.__blackcatVideo=[];const keep=(u,type)=>{list.push({u,t:Date.now(),type});if(list.length>40)list.shift();};
+const make=URL.createObjectURL;URL.createObjectURL=function(o){const u=make.apply(this,arguments);try{if(o instanceof Blob&&String(o.type).startsWith('video/')&&o.size>0){vids.push({u,t:Date.now(),b:o});if(vids.length>3)vids.shift();}else if(o instanceof Blob&&/audio|ogg|opus|mpeg/i.test(o.type))keep(u,o.type);}catch{}return u;};
+const play=HTMLMediaElement.prototype.play;HTMLMediaElement.prototype.play=function(){try{const u=this.currentSrc||this.src;if(this instanceof HTMLAudioElement&&u&&!/^data:/.test(u))keep(u,'media');}catch{}return play.apply(this,arguments);};
+window.addEventListener('message',(e)=>{const q=e.source===window&&e.data&&e.data.__blackcatVideoAsk;if(!q)return;const v=vids.find((x)=>x.u===q.u)||(q.since?vids.filter((x)=>x.t>=q.since).pop():null);window.postMessage({__blackcatVideoBlob:{id:q.id,blob:v?v.b:null}},location.origin);});})()`;
+const voiceUrls = new Map(), videoClicks = new Map();
 if (/^web\.(whatsapp\.com|telegram\.org)$/.test(location.host)) {
   webFrame.executeJavaScript(AUDIO_HOOK).catch(() => {});
   window.addEventListener('click', (event) => {
     const root = messageAt(event.target);
-    if (!root || !looksLikeVoice(root) || !event.target.closest?.('button, [role="button"]')) return;
+    if (!root) return;
+    if (!looksLikeVoice(root) && looksLikeVideo(root)) { videoClicks.set(messageId(root), Date.now() - 200); return; }
+    if (!looksLikeVoice(root) || !event.target.closest?.('button, [role="button"]')) return;
     const id = messageId(root), since = Date.now() - 200;
     (async () => { for (let i = 0; i < 40; i++) { await new Promise((r) => setTimeout(r, 250)); const u = await webFrame.executeJavaScript(`(window.__blackcatAudio||[]).filter(x=>x.t>=${since}).map(x=>x.u).pop()||''`).catch(() => ''); if (u) { voiceUrls.set(id, u); return; } } })();
   }, true);
+}
+// A video blob kept by the page-side hook, by its link or as the newest one since the video was clicked
+const keptVideo = (u, since) => new Promise((resolve) => {
+  const id = Math.random().toString(36).slice(2), timer = setTimeout(() => { window.removeEventListener('message', got); resolve(null); }, 3000);
+  function got(event) { const r = event.source === window && event.data?.__blackcatVideoBlob; if (!r || r.id !== id) return; clearTimeout(timer); window.removeEventListener('message', got); resolve(r.blob || null); }
+  window.addEventListener('message', got);
+  window.postMessage({ __blackcatVideoAsk: { id, u: u || '', since: since || 0 } }, location.origin);
+});
+const MAX_VIDEO = 200 * 1024 * 1024;
+// Telegram serves media through links that answer one byte range at a time, so a plain fetch gets only the first piece
+// (the cut-off file then never plays). Ask for every piece until the whole file is in.
+async function fetchWhole(src) {
+  const pieces = []; let at = 0, total = Infinity, type = '';
+  while (at < total) {
+    const r = await fetch(src, { headers: { Range: 'bytes=' + at + '-' } });
+    if (!r.ok) throw new Error('影片载入失败（' + r.status + '），请先播放一遍再保存');
+    type = type || r.headers.get('content-type') || '';
+    const piece = new Uint8Array(await r.arrayBuffer());
+    if (r.status === 200) return { bytes: piece, type };
+    const m = /\/(\d+)\s*$/.exec(r.headers.get('content-range') || '');
+    if (m) total = Number(m[1]);
+    if (!piece.length) break;
+    pieces.push(piece); at += piece.length;
+    if (at > MAX_VIDEO) throw new Error('影片超过 200 MB，无法保存');
+    if (!m) break;
+  }
+  if (Number.isFinite(total) && at < total) throw new Error('影片没有完整载入，请再试一次');
+  const bytes = new Uint8Array(at); let o = 0;
+  for (const p of pieces) { bytes.set(p, o); o += p.length; }
+  return { bytes, type };
+}
+const blobBytes = async (blob) => (blob?.size ? { bytes: new Uint8Array(await blob.arrayBuffer()), type: blob.type } : null);
+// What the saved bytes really are; a cut-off MP4 (no index, or a last box running past the end) is refused
+const box = (b, at) => String.fromCharCode(b[at], b[at + 1], b[at + 2], b[at + 3]);
+const u32 = (b, at) => b[at] * 16777216 + b[at + 1] * 65536 + b[at + 2] * 256 + b[at + 3];
+function videoType(b) {
+  if (b.length > 4 && b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3) return 'video/webm';
+  if (b.length < 16 || box(b, 4) !== 'ftyp') return '';
+  let at = 0, index = false;
+  while (at + 8 <= b.length) {
+    let size = u32(b, at);
+    if (size === 1) size = u32(b, at + 8) * 4294967296 + u32(b, at + 12); else if (size === 0) size = b.length - at;
+    if (size < 8) return '';
+    if (box(b, at + 4) === 'moov') index = true;
+    at += size;
+  }
+  if (!index || at > b.length) return '';
+  return box(b, 8) === 'qt  ' ? 'video/quicktime' : 'video/mp4';
 }
 // Files: the page's own download button is clicked once the main process is ready to catch that one download
 const waitForDownload = (token) => new Promise((resolve, reject) => {
@@ -1672,11 +1724,20 @@ async function captureForNotes(request) {
       if (!out.imageData) throw new Error('图片还没载入完成，请稍后再试');
     } else if (kind === 'video') {
       const video = (media?.tagName === 'VIDEO' && media) || root.querySelector('video'), src = video?.currentSrc || video?.src || '';
-      if (!src || !/^(blob:|https?:)/.test(src)) throw new Error('请先点开播放这段影片，加载后再保存');
-      const blob = await (await fetch(src)).blob();
-      if (blob.size > 200 * 1024 * 1024) throw new Error('影片超过 200 MB，无法保存');
-      out.videoBytes = new Uint8Array(await blob.arrayBuffer()); out.mime = blob.type || 'video/mp4';
-      out.imageData = video.readyState >= 2 ? frameOf(video) : (media?.tagName === 'IMG' ? frameOf(media) : '');
+      // Try each place the whole file can come from, keeping the first that is a complete, playable video
+      const tries = [];
+      if (/^https?:/.test(src)) tries.push(() => fetchWhole(src));
+      if (src.startsWith('blob:')) tries.push(async () => blobBytes(await (await fetch(src)).blob()), async () => blobBytes(await keptVideo(src)));
+      if (videoClicks.has(messageId(root))) tries.push(async () => blobBytes(await keptVideo('', videoClicks.get(messageId(root)))));
+      if (!tries.length) throw new Error('请先点开播放这段影片，加载后再保存');
+      let got = null, problem = null;
+      for (const attempt of tries) {
+        try { const r = await attempt(); if (r?.bytes?.length && videoType(r.bytes)) { got = r; break; } } catch (error) { problem = error; }
+      }
+      if (!got) throw new Error(problem && /200 MB/.test(problem.message) ? problem.message : '影片还没完整载入：请先点开把影片播放一遍（或等它下载完），再保存');
+      if (got.bytes.length > MAX_VIDEO) throw new Error('影片超过 200 MB，无法保存');
+      out.videoBytes = got.bytes; out.mime = videoType(got.bytes);
+      out.imageData = video?.readyState >= 2 ? frameOf(video) : (media?.tagName === 'IMG' ? frameOf(media) : '');
     } else if (kind === 'voice') {
       const src = voiceUrls.get(messageId(root)) || root.querySelector('audio')?.currentSrc || '';
       if (!src) throw new Error('请先播放这段语音（播一下就行），再保存');

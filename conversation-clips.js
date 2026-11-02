@@ -51,7 +51,7 @@ function createClipsStore(dataDir, now = Date.now) {
     const text = String(r.text || '').slice(0, 20000), kind = ['image', 'video', 'voice', 'file'].includes(r.kind) ? r.kind : 'text';
     const extra = {};
     if (kind === 'image') { extra.image = storePicture(r.imageData); if (!extra.image) throw Error('图片无法保存'); }
-    else if (kind === 'video') { extra.video = storeMedia(Object.assign(r.videoBytes || [], { mime: r.mime }), VIDEO_TYPES, 'mp4', '影片'); extra.image = storePicture(r.imageData); }
+    else if (kind === 'video') { extra.video = storeMedia(Object.assign(r.videoBytes || [], { mime: r.mime }), VIDEO_TYPES, 'mp4', '影片'); extra.image = storePicture(r.imageData); extra.size = r.videoBytes.length; }
     else if (kind === 'voice') { extra.audio = storeMedia(Object.assign(r.audioBytes || [], { mime: r.mime }), AUDIO_TYPES, 'ogg', '语音'); }
     else if (kind === 'file') {
       const got = incoming.get(String(r.fileToken || ''));
