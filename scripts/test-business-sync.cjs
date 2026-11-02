@@ -38,7 +38,7 @@ async function main() {
   assert.equal(read(path.join(b,'conversation-notes.json'),{}).notes[0].text,'original');
   atomic(path.join(b,'accounts.json'),[{...account,id:'new-wa',name:'Other display name'}]);await clientB.cycle();await clientA.cycle();await clientB.cycle();
   assert.equal(read(path.join(b,'conversation-notes.json'),{}).notes[0].accountId,'new-wa','notes follow account identity after relogin');
-  assert(read(path.join(b,'account-contacts.json'),{})['new-wa']);assert.equal(read(path.join(b,'ai-knowledge.json'),{}).accounts['new-wa'].enabled,false);
+  assert.deepEqual(read(path.join(b,'account-contacts.json'),{}),{},'account contacts never travel');assert.equal(read(path.join(a,'account-contacts.json'),{})['old-wa'].list.length,1,'local account cache preserved');assert.equal(read(path.join(b,'ai-knowledge.json'),{}).accounts['new-wa'].enabled,false);
   assert.equal((await clientA.cycle()).sent,0,'no per-device naming echo');assert.equal((await clientB.cycle()).sent,0);
   // Unrelated edits made offline merge instead of replacing an entire JSON file.
   let ca=read(path.join(a,'contacts.json'),{});ca.whatsapp[0].name='Edited A';atomic(path.join(a,'contacts.json'),ca);

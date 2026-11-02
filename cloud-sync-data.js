@@ -28,10 +28,8 @@ function exportRows(records, device, linked = {}) {
   for (const [platform, list] of Object.entries(records['contacts.json'] || {})) for (const c of list) {
     const key = contactKey(c); if (key) add({ kind: 'contact', key: [platform, key], platform, value: c });
   }
-  for (const [id, cache] of Object.entries(records['account-contacts.json'] || {})) {
-    const a = accounts.find(a => a.id === id), i = cache.identity && identity(cache.identity), r = a ? ref(id) : i ? { platform: i.platform, phone: i.phone, username: i.username, key: identityKey(i) || ref(id).key } : ref(id);
-    for (const c of cache.list || []) { const key = contactKey(c); if (key) add({ kind: 'account-contact', key: [r.key, key], account: r, value: c }); }
-  }
+  // Only My contacts travel: one shared list per platform, independent of accounts.
+  // Account contact caches stay on the device, including during legacy migration.
   const bulk = records['bulk.json'] || {};
   for (const group of bulk.templates || []) {
     add({ kind: 'group', key: group.id, value: { ...group, items: undefined } });
@@ -58,7 +56,6 @@ function applyRows(records, changes, linked) {
   for (const { row, deleted } of changes) {
     const { kind, value } = row;
     if (kind === 'contact') { const contacts = list('contacts.json', {}); const array = contacts[row.platform] || (contacts[row.platform] = []); replace(array, c => contactKey(c) === row.key[1], value, deleted); touched.add('contacts.json'); }
-    if (kind === 'account-contact') { const cache = list('account-contacts.json', {}), id = resolve(row.account), c = cache[id] || (cache[id] = { list: [], identity: row.account, restored: true, at: 0 }); replace(c.list, v => contactKey(v) === row.key[1], value, deleted); touched.add('account-contacts.json'); }
     if (['group','template','list'].includes(kind)) {
       const bulk = list('bulk.json', { templates: [], lists: [], tasks: [] });
       if (kind === 'list') replace(bulk.lists, v => v.id === row.key, value, deleted);

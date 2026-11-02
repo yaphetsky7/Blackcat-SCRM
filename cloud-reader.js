@@ -11,7 +11,7 @@ function registerCloudReader({ app, ipcMain, protocol, dialog, getWindow, cloud 
     const owner = cloud.owner(), migration = await cloud.request('archive/prepare', 'POST'); if (cloud.owner() !== owner) throw Error('黑猫账号已改变');
     const accounts = await cloud.request('archive/accounts'); if (cloud.owner() !== owner) throw Error('黑猫账号已改变'); close();
     current = { token: crypto.randomUUID(), owner };
-    return { token: current.token, accounts, remoteCloud: true, standalone: true, filename: '云端聊天记录 / Cloud chat history' + (migration.warnings?.length ? ' · ' + migration.warnings.join('；') : '') };
+    return { token: current.token, accounts, remoteCloud: true, standalone: true, filename: '云端聊天记录 / Cloud chat history' + (migration.preparing ? ' · 旧归档正在后台整理，稍后刷新 / Preparing older archives; refresh shortly' : '') + (migration.warnings?.length ? ' · ' + migration.warnings.join('；') : '') };
   }
   async function asset(token, id) {
     active(token); if (assets.has(id)) return assets.get(id);

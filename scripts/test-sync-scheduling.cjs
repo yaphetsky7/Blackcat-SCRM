@@ -4,7 +4,7 @@ const {registerCloud}=require('../cloud-main');
 async function main(){
  const dataDir=fs.mkdtempSync(path.join(os.tmpdir(),'blackcat-sync-schedule-')),app=new EventEmitter(),handlers=new Map(),sender={},calls=[];app.getPath=()=>dataDir;app.getVersion=()=> '1.18.0';
  let release,tick;const held=new Promise(r=>release=r),original=global.fetch;
- global.fetch=async url=>{const route=url.split('/api/cloud/')[1];calls.push(route);if(route==='archive/accounts-active')await held;return{ok:true,json:async()=>({ok:true,data:route==='sync/exchange'?{rows:[],cursor:0,more:false,applied:[],conflicts:[]}:{}})};};
+ global.fetch=async url=>{const route=url.split('/api/cloud/')[1];calls.push(route);if(route==='archive/accounts-active')await held;return{ok:true,text:async()=>JSON.stringify({ok:true,data:route==='sync/exchange'?{rows:[],cursor:0,more:false,applied:[],conflicts:[]}:{}})};};
  try{
   registerCloud({app,schedule:fn=>{tick=fn;return{unref(){}};},unschedule(){},makeWorker:()=>{const worker=new EventEmitter();worker.terminate=async()=>worker.emit('exit',0);return worker;},ipcMain:{handle:(name,fn)=>handlers.set(name,fn),on(){}},getWindow:()=>({webContents:sender,isDestroyed:()=>false}),license:{state:()=>({profile:{username:'fixture',plan:'business'}}),limits:()=>({cloudBytes:100e9}),cloudConnection:()=>({server:'https://synthetic.invalid',token:'synthetic'}),loggedIn:()=>true},backupService:{state:()=>({storageMode:'cloud',counts:{messages:1},folder:dataDir}),setCloudRecent(){},useCloud(){},cloudOwner:()=> 'fixture',isBusy:()=>false,localFolder:()=>'',setCloudSyncing(){}}});
   sender.send=()=>{};const first=handlers.get('cloud:business-sync')({sender});await new Promise(r=>setImmediate(r));

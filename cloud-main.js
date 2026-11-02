@@ -16,10 +16,8 @@ function registerCloud({ app, ipcMain, dialog, shell, getWindow, license, backup
     return { ...c, version: app.getVersion() };
   };
   async function request(route, method = 'GET', body, binary = false, signal) {
-    const expectedOwner = owner(), c = connection(), res = await fetch(c.server + '/api/cloud/' + route, { method, redirect: 'error', headers: { authorization: 'Bearer ' + c.token, 'x-blackcat-version': c.version, 'content-type': Buffer.isBuffer(body) ? 'application/octet-stream' : 'application/json' }, body: body === undefined ? undefined : Buffer.isBuffer(body) ? body : JSON.stringify(body), signal: signal || AbortSignal.timeout(120000) });
-    if (owner() !== expectedOwner) { await res.body?.cancel(); throw Error('黑猫账号已改变，请重新操作'); }
-    if (binary && res.ok) return Buffer.from(await res.arrayBuffer());
-    const result = await res.json(); if (!res.ok || !result.ok) throw Object.assign(Error(result.error || '云备份请求失败'),{status:res.status}); return result.data;
+    const expectedOwner = owner(), c = connection();
+    return require('./cloud-http').cloudRequest({ url: c.server + '/api/cloud/' + route, route, method, headers: { authorization: 'Bearer ' + c.token, 'x-blackcat-version': c.version, 'content-type': Buffer.isBuffer(body) ? 'application/octet-stream' : 'application/json' }, body: body === undefined ? undefined : Buffer.isBuffer(body) ? body : JSON.stringify(body), binary, signal, check: () => { if (owner() !== expectedOwner) throw Error('黑猫账号已改变，请重新操作'); } });
   }
   async function state() { const b = backupService.state(),remote=await request('state'),local=businessClient?.owner===owner()?businessClient.client.status():{}; return { ...remote, ...config(), businessSync: {...local,cloudCounts:remote.workspace?.counts||local.workspace?.counts||{},migration:remote.workspace?.migration||local.workspace?.migration||{},running:!!businessTask||local.running}, cloudPrimary: b.storageMode === 'cloud', pendingMessages: b.storageMode === 'cloud' ? b.counts.messages : 0, captureEnabled: b.enabled, scanRunning: !!b.running, scanProgress: b.running?.progress || '', running: !!current, progress: current?.progress || '' }; }
   let businessClient = null, businessAttempt = 0, businessTask = null, businessDelay = 15000;

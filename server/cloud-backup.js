@@ -31,6 +31,25 @@ function createCloudBackup({ store, storage = createR2(), env = process.env }) {
   const busy = new Set();
   const archive = require('./cloud-archive').createCloudArchive({ db, getChunk: (user, h) => get(user, h) });
   const sync = require('./cloud-sync').createBusinessSync({ db, get, put, requirePlan });
+  const archivePreparations = new Map();
+  function prepareArchive(user) {
+    requirePlan(user);
+    const previous = archivePreparations.get(user.id);
+    if (previous?.running) return { ready: false, preparing: true, warnings: previous.warnings };
+    const latest = new Map(), warnings = [];
+    for (const point of db.prepare('SELECT * FROM cloud_snapshots WHERE user_id=? ORDER BY created DESC').all(user.id)) {
+      if (latest.has(point.device)) continue;
+      try { if (JSON.parse(point.manifest).files.some(f => f.path === 'archive/chat-archive.sqlite')) latest.set(point.device, point); }
+      catch { warnings.push('部分旧归档索引损坏，原备份已保留，请联系管理员。'); }
+    }
+    const pending = [...latest.values()].filter(p => one('SELECT status FROM cloud_primary_points WHERE user_id=? AND id=?', user.id, p.id)?.status !== 'ready');
+    if (!pending.length) return { ready: true, preparing: false, warnings };
+    const state = { running: true, warnings }; archivePreparations.set(user.id, state);
+    // R2 reads / historical imports can outlast an HTTP gateway. Import one
+    // point in the background while existing conversations remain accessible.
+    Promise.resolve().then(() => archive.importPoint(user, pending[0])).catch(e => { state.warnings.push(e instanceof SyntaxError ? '部分旧归档格式不完整，原备份已保留。' : e.message); }).finally(() => { state.running = false; });
+    return { ready: false, preparing: true, warnings };
+  }
   async function put(user, h, bytes) {
     requirePlan(user);
     if (!isHash(h) || !bytes.length || bytes.length > CHUNK || hash(bytes) !== h) throw Error('备份分块校验失败');
@@ -118,9 +137,7 @@ function createCloudBackup({ store, storage = createR2(), env = process.env }) {
     if (suffix.startsWith('chunks/') && req.method === 'GET') { const bytes = await get(user, suffix.slice(7)); res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': bytes.length, 'cache-control': 'no-store' }); return res.end(bytes); }
     if (suffix === 'snapshots' && req.method === 'POST') { const body = await json(req, 32e6), result = await snapshot(user, found.session, body); if (body.primary) { const point = one('SELECT * FROM cloud_primary_points WHERE user_id=? AND id=?', user.id, result.id); if (!point) throw Error('聊天云端索引尚未准备好'); await archive.importPoint(user, point); result.primary = true; } return send(res, 200, { ok: true, data: result }); }
     if (suffix === 'archive/prepare' && req.method === 'POST') {
-      const latest = new Map(); for (const row of db.prepare('SELECT * FROM cloud_snapshots WHERE user_id=? ORDER BY created DESC').all(user.id)) { if (latest.has(row.device) || !JSON.parse(row.manifest).files.some(f => f.path === 'archive/chat-archive.sqlite')) continue; latest.set(row.device, row); }
-      const warnings = []; for (const point of latest.values()) { try { await archive.importPoint(user, point); } catch (e) { warnings.push(e.message); } }
-      return send(res, 200, { ok: true, data: { ready: true, warnings } });
+      return send(res, 200, { ok: true, data: prepareArchive(user) });
     }
     if (suffix === 'archive/accounts' && req.method === 'GET') return send(res, 200, { ok: true, data: archive.accounts(user) });
     if (suffix === 'archive/chats' && req.method === 'GET') return send(res, 200, { ok: true, data: archive.listChats(user, url.searchParams.get('accountId') || '') });

@@ -8,10 +8,7 @@ async function request(route, method = 'GET', body, binary = false) {
   for (let attempt = 0; ; attempt++) {
     try {
       const res = await fetch(job.server + '/api/cloud/' + route, { method, redirect: 'error', headers: { authorization: 'Bearer ' + job.token, 'content-type': Buffer.isBuffer(body) ? 'application/octet-stream' : 'application/json', 'x-blackcat-version': job.version }, body: body === undefined ? undefined : Buffer.isBuffer(body) ? body : JSON.stringify(body), signal: AbortSignal.timeout(120000) });
-      if (binary && res.ok) return Buffer.from(await res.arrayBuffer());
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw Object.assign(Error(data.error || '云备份请求失败'), { status: res.status });
-      return data.data;
+      return await require('./cloud-http').decodeCloudResponse(res, binary);
     } catch (e) {
       if (attempt >= 2 || e.status && ![409, 502, 503, 504].includes(e.status)) throw e;
       await new Promise(resolve => setTimeout(resolve, (attempt + 1) * 1500));

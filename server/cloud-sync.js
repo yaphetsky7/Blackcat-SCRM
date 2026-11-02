@@ -26,11 +26,14 @@ function createBusinessSync({ db, get, put, requirePlan }) {
     if (!Number.isSafeInteger(body.since) || body.since < 0 || !Array.isArray(body.changes) || body.changes.length > 100) throw Error('同步请求不正确');
     if (body.priority === true && (!Number.isSafeInteger(body.prioritySince) || body.prioritySince < 0)) throw Error('优先资料游标不正确');
     const keys = new Set();
-    for (const change of body.changes) { if (!/^(contact|account-contact|group|template|list|note|knowledge|ai-config|quick):[a-f0-9]{64}$/.test(change.key || '') || keys.has(change.key) || !Number.isSafeInteger(change.baseRevision) || change.baseRevision < 0 || typeof change.deleted !== 'boolean') throw Error('同步项目不正确'); keys.add(change.key); validate(user, change.descriptor); }
+    // Older clients may still submit account caches. Ignore these without
+    // rejecting unrelated notes, lists or My contacts in the same batch.
+    const changes = body.changes.filter(c => !String(c?.key || '').startsWith('account-contact:'));
+    for (const change of changes) { if (!/^(contact|group|template|list|note|knowledge|ai-config|quick):[a-f0-9]{64}$/.test(change.key || '') || keys.has(change.key) || !Number.isSafeInteger(change.baseRevision) || change.baseRevision < 0 || typeof change.deleted !== 'boolean') throw Error('同步项目不正确'); keys.add(change.key); validate(user, change.descriptor); }
     const applied = [], conflicts = [];
     db.exec('BEGIN IMMEDIATE');
-    try { for (const change of body.changes) { const old = getRow(user, change.key); if ((old?.revision || 0) !== change.baseRevision) { conflicts.push(publicRow(old)); continue; } if (change.deleted && !old) continue; applied.push(write(user, change.key, change.deleted, change.descriptor)); } db.exec('COMMIT'); } catch (e) { db.exec('ROLLBACK'); throw e; }
-    const rows = db.prepare('SELECT * FROM cloud_sync_records WHERE user_id=? AND revision>? ORDER BY revision LIMIT 101').all(user.id, body.since), more = rows.length > 100; rows.length = Math.min(100, rows.length);
+    try { for (const change of changes) { const old = getRow(user, change.key); if ((old?.revision || 0) !== change.baseRevision) { conflicts.push(publicRow(old)); continue; } if (change.deleted && !old) continue; applied.push(write(user, change.key, change.deleted, change.descriptor)); } db.exec('COMMIT'); } catch (e) { db.exec('ROLLBACK'); throw e; }
+    const rows = db.prepare("SELECT * FROM cloud_sync_records WHERE user_id=? AND revision>? AND key NOT LIKE 'account-contact:%' ORDER BY revision LIMIT 101").all(user.id, body.since), more = rows.length > 100; rows.length = Math.min(100, rows.length);
     let priorityRows = [], priorityCursor = 0, priorityMore = false;
     if (body.priority === true) {
       priorityRows = db.prepare("SELECT * FROM cloud_sync_records WHERE user_id=? AND revision>? AND key NOT LIKE 'contact:%' AND key NOT LIKE 'account-contact:%' ORDER BY revision LIMIT 101").all(user.id, body.prioritySince);
@@ -78,7 +81,7 @@ function createBusinessSync({ db, get, put, requirePlan }) {
     return { migrating: state.running, more: state.more, done: state.done, total: state.total, warnings: state.warnings };
   }
   function references(user) { const refs = new Set(); for (const r of db.prepare('SELECT descriptor FROM cloud_sync_records WHERE user_id=?').all(user.id)) { const d = JSON.parse(r.descriptor); for (const f of [d.record, ...d.assets]) for (const c of f.chunks) refs.add(c.hash); } return refs; }
-  function status(user) { const clock=db.prepare('SELECT revision,updated_at FROM cloud_sync_clock WHERE user_id=?').get(user.id),counts=Object.fromEntries(db.prepare("SELECT substr(key,1,instr(key,':')-1) AS kind,COUNT(*) AS n FROM cloud_sync_records WHERE user_id=? AND deleted=0 GROUP BY kind").all(user.id).map(r=>[r.kind,r.n]));const m=migrationState(user);return { revision:clock?.revision||0,updatedAt:clock?.updated_at||0,counts,records:Object.values(counts).reduce((a,n)=>a+n,0),migration:{running:m.running,more:m.more,done:m.done,total:m.total,warnings:m.warnings} }; }
+  function status(user) { const clock=db.prepare('SELECT revision,updated_at FROM cloud_sync_clock WHERE user_id=?').get(user.id),counts=Object.fromEntries(db.prepare("SELECT substr(key,1,instr(key,':')-1) AS kind,COUNT(*) AS n FROM cloud_sync_records WHERE user_id=? AND deleted=0 AND key NOT LIKE 'account-contact:%' GROUP BY kind").all(user.id).map(r=>[r.kind,r.n]));const m=migrationState(user);return { revision:clock?.revision||0,updatedAt:clock?.updated_at||0,counts,records:Object.values(counts).reduce((a,n)=>a+n,0),migration:{running:m.running,more:m.more,done:m.done,total:m.total,warnings:m.warnings} }; }
   return { exchange, importLegacy, references, status };
 }
 module.exports = { createBusinessSync };

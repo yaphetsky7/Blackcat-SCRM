@@ -14,13 +14,13 @@
     el('view').textContent = t('查看云端聊天记录', 'View cloud chats'); el('sync').textContent = t('立即同步聊天', 'Sync chats now');
     el('scan').textContent = t('补存可读取历史', 'Collect readable history'); el('scan-stop').textContent = t('停止扫描', 'Stop scan');
     el('business-title').textContent = t('工作资料同步', 'Workspace sync');
-    el('business-description').textContent = t('保存后自动同步，新电脑自动加载。无需下载恢复点、导入或重开软件；断网时保留本机修改，联网后补传。', 'Changes sync automatically and load on a new computer. No recovery points, imports or restarts. Offline changes upload when connectivity returns.');
+    el('business-description').textContent = t('Telegram 账号共用一份「我的联系人」，WhatsApp 账号共用另一份；账号联系人仅保留本机。保存后自动同步，新电脑自动加载。无需下载恢复点、导入或重开软件；断网时保留本机修改，联网后补传。', 'Telegram accounts share one My contacts list; WhatsApp accounts share another. Account contacts stay on this device. Changes sync automatically and load on a new computer. No recovery points, imports or restarts. Offline changes upload when connectivity returns.');
     el('automatic-label').textContent = t('自动同步工作资料', 'Automatically sync workspace data');
     el('upload').textContent = t('立即同步资料', 'Sync workspace now'); el('refresh').textContent = t('刷新状态', 'Refresh status');
     el('cleanup').textContent = t('清理无引用的云端文件', 'Clean up unreferenced cloud files');
     el('note').textContent = t('仅在软件运行且联网时同步。删除资料也会同步到其他电脑。平台登录与 API 密钥不上传；新电脑需重新登录平台，AI 自动回复需自行开启，群发任务不会自动执行。尚未读取的历史和未获取的原附件需补存。', 'Sync runs while the app is open and online. Deletions sync across computers too. Platform logins and API secrets are excluded. Sign into platforms again and enable AI replies on each computer; bulk jobs never start automatically. Unreadable history and unavailable original attachments still need collection.');
     const sync = state?.businessSync || {}, counts = sync.cloudCounts || sync.counts || {}, local = sync.localCounts || {}, pending = sync.pendingCounts || {};
-    const groups = [['联系人', 'Contacts', ['contact','account-contact']], ['群发名单', 'Recipient lists', ['list']], ['群发文案', 'Message templates', ['template']], ['AI 知识库', 'AI knowledge bases', ['knowledge']], ['对话备注', 'Conversation notes', ['note']]];
+    const groups = [['我的联系人', 'My contacts', ['contact']], ['群发名单', 'Recipient lists', ['list']], ['群发文案', 'Message templates', ['template']], ['AI 知识库', 'AI knowledge bases', ['knowledge']], ['对话备注', 'Conversation notes', ['note']]];
     const sum=(source,kinds)=>kinds.reduce((n,k)=>n+(source[k]||0),0);
     el('categories').replaceChildren(...groups.map(([zh, english, kinds]) => { const card = document.createElement('div'); card.className = 'cloud-category'; const label = document.createElement('span'), count = document.createElement('strong'), detail=document.createElement('small'); label.textContent = t(zh, english); count.textContent = sum(counts,kinds);detail.textContent=t('云端已保存','Saved in cloud')+' · '+t('本机 ','Local ')+sum(local,kinds)+' · '+t('待同步 ','Pending ')+sum(pending,kinds);card.append(label, count,detail); return card; }));
     if (!state) return;
