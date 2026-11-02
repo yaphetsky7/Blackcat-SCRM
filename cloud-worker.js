@@ -51,7 +51,9 @@ async function upload() {
     manifest.files.push(descriptor); nextCache[entry.path] = { stamp, descriptor };
   }
   validateManifest(manifest);
-  const result = await request('snapshots', 'POST', { label: job.label, manifest, requestId: crypto.randomUUID() });
+  const result = await request('snapshots', 'POST', { label: job.label, manifest, requestId: crypto.randomUUID(), ...(job.primary ? { primary: true } : {}) });
+  if (job.primary && result.primary !== true) throw Error('云端尚未确认接收聊天记录，临时缓冲已保留');
+  if (job.primary && job.acknowledge) result.acknowledged = await require('./cloud-outbox').acknowledge({ root: job.folder, snapshot: path.join(job.stage, 'chat-archive.sqlite'), dataDir: job.dataDir });
   atomic(path.join(job.dataDir, 'cloud-file-cache.json'), nextCache);
   return { ...result, sent, reused, files: manifest.files.length };
 }
@@ -81,7 +83,7 @@ async function download() {
     await fs.promises.rename(dest + '.partial', dest);
   }
   atomic(path.join(job.folder, 'complete.json'), { id: job.id, at: Date.now(), files: m.files.length });
-  return { folder: job.folder, id: job.id };
+  return { folder: job.folder, id: job.id, hasArchive: m.files.some(f => f.path === 'archive/chat-archive.sqlite') };
 }
 (async () => {
   try { parentPort.postMessage({ result: job.action === 'upload' ? await upload() : await download() }); }

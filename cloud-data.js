@@ -26,9 +26,10 @@ async function* walk(root, prefix) {
     }
   }
 }
-async function* collect({ dataDir, folder, stage }) {
+async function* collect({ dataDir, folder, stage, archiveOnly = false, excludeArchive = false }) {
   fs.mkdirSync(stage, { recursive: true });
   for (const name of RECORDS) {
+    if (archiveOnly && name !== 'account-index.json') continue;
     let value;
     if (name === 'account-index.json') value = read(path.join(dataDir, 'accounts.json'), []).map(safeAccount);
     else value = read(path.join(dataDir, name), null);
@@ -37,12 +38,20 @@ async function* collect({ dataDir, folder, stage }) {
     if (name === 'bulk.json') { value = { templates: value.templates || [], lists: value.lists || [], tasks: [] }; }
     const file = path.join(stage, name); atomic(file, value); yield { path: 'records/' + name, file };
   }
-  yield* walk(path.join(dataDir, 'knowledge-files'), 'knowledge');
-  yield* walk(path.join(dataDir, 'quick-media'), 'quick-media');
-  if (folder && fs.existsSync(path.join(folder, 'chat-archive.sqlite'))) {
+  if (!archiveOnly) { yield* walk(path.join(dataDir, 'knowledge-files'), 'knowledge'); yield* walk(path.join(dataDir, 'quick-media'), 'quick-media'); }
+  if (!excludeArchive && folder && fs.existsSync(path.join(folder, 'chat-archive.sqlite'))) {
     const db = new DatabaseSync(path.join(folder, 'chat-archive.sqlite'), { readOnly: true });
     const file = path.join(stage, 'chat-archive.sqlite');
     try { await backup(db, file); } finally { db.close(); }
+    if (archiveOnly) {
+      // Send only the pending chat segment, not the local digest ledger or unrelated chat headers.
+      const compact = new DatabaseSync(file);
+      try {
+        const has = table => !!compact.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table);
+        for (const table of ['cloud_ack','revisions','runs','files','deleted_messages','deleted_chats','chat_aliases']) if (has(table)) compact.exec('DELETE FROM ' + table);
+        compact.exec('DELETE FROM chats WHERE NOT EXISTS(SELECT 1 FROM messages m WHERE m.account=chats.account AND m.chat=chats.key); DELETE FROM accounts WHERE NOT EXISTS(SELECT 1 FROM messages m WHERE m.account=accounts.id); VACUUM;');
+      } finally { compact.close(); }
+    }
     yield { path: 'archive/chat-archive.sqlite', file };
     yield* walk(path.join(folder, 'media'), 'archive/media');
     yield* walk(path.join(folder, 'imports'), 'archive/imports');
@@ -71,7 +80,7 @@ function applyPending(dataDir, maxAccounts = 0, owner = '') {
     if (!/^[\w-]{1,100}$/.test(a.id) || !['whatsapp','telegram','line','facebook','tiktok','wechat','zalo','x'].includes(a.platform)) continue;
     const identity = accountIdentity(a), existing = local.find(b => b.id === a.id || identity && accountIdentity(b) === identity);
     if (existing) mapping.set(a.id, existing.id);
-    else if (maxAccounts < 0 || local.length < maxAccounts) { local.push(a); mapping.set(a.id, a.id); }
+    else if (maxAccounts < 0 || local.length < maxAccounts) { local.push({ ...a, self: { ...a.me } }); mapping.set(a.id, a.id); }
   }
   const remap = value => Object.fromEntries(Object.entries(value || {}).map(([id, v]) => [mapping.get(id) || id, v]));
   const changes = new Map([['accounts.json', local]]);
@@ -82,13 +91,20 @@ function applyPending(dataDir, maxAccounts = 0, owner = '') {
       const notes = [...(old?.notes || [])], keys = new Set(notes.map(n => n.accountId + '|' + n.chatKey));
       for (const n of value.notes || []) { const note = { ...n, accountId: mapping.get(n.accountId) || n.accountId }; if (!keys.has(note.accountId + '|' + note.chatKey)) { notes.push(note); keys.add(note.accountId + '|' + note.chatKey); } }
       value = { version: 1, notes };
-    } else if (name === 'contacts.json') value = Object.fromEntries([...new Set([...Object.keys(value), ...Object.keys(old || {})])].map(k => [k, mergeById(old?.[k] || [], value[k] || [])]));
-    else if (name === 'account-contacts.json') value = { ...remap(value), ...old };
+    } else if (name === 'contacts.json') value = Object.fromEntries([...new Set([...Object.keys(value), ...Object.keys(old || {})])].map(k => [k, require('./contact-restore').merge(value[k] || [], old?.[k] || [])]));
+    else if (name === 'account-contacts.json') value = require('./contact-restore').restoreAccountCaches(value, old || {}, mapping, incoming);
     else if (name === 'bulk.json') value = { templates: mergeById(old?.templates || [], value.templates || []), lists: mergeById(old?.lists || [], value.lists || []), tasks: old?.tasks || [] };
     else if (name === 'ai-knowledge.json') value = { ...(old || {}), version: 1, bases: mergeById(old?.bases || [], value.bases || []), accounts: { ...remap(value.accounts), ...old?.accounts }, jobs: old?.jobs || [], handled: old?.handled || {}, usage: old?.usage || {} };
     else if (name === 'quick-replies.json') { if (Array.isArray(value)) value = mergeById(old || [], value); else value = { ...value, ...old }; }
     changes.set(name, value);
   }
+  // Keep a portable copy in My contacts, even before the messaging account is signed in again.
+  const personal = changes.get('contacts.json') || read(path.join(dataDir, 'contacts.json'), {});
+  for (const cache of Object.values(changes.get('account-contacts.json') || {})) {
+    const platform = cache.identity?.platform;
+    if (cache.restored && ['whatsapp','telegram'].includes(platform)) personal[platform] = require('./contact-restore').merge((cache.list || []).map(c => ({ ...c, id: c.id || require('crypto').randomUUID() })), personal[platform] || []);
+  }
+  changes.set('contacts.json', personal);
   // Preserve originals before applying; retry is idempotent if the process stops mid-restore.
   const originals = path.join(dataDir, 'cloud-restore-originals', pending.id); fs.mkdirSync(originals, { recursive: true });
   for (const [name] of changes) { const src = path.join(dataDir, name), dest = path.join(originals, name); if (fs.existsSync(src) && !fs.existsSync(dest)) fs.copyFileSync(src, dest); }
@@ -107,6 +123,8 @@ function applyPending(dataDir, maxAccounts = 0, owner = '') {
     const config = read(file, {}); if (fs.existsSync(file) && !fs.existsSync(path.join(originals, 'backup-settings.json'))) fs.copyFileSync(file, path.join(originals, 'backup-settings.json'));
     if (!config.folder) atomic(file, { ...config, folder: path.join(root, 'archive'), enabled: false, automatic: config.automatic !== false, lastRun: 0 });
   }
-  fs.unlinkSync(marker); return { imported: true, folder: root };
+  const report = { imported: true, owner, folder: root, at: Date.now(), contacts: Object.fromEntries(Object.entries(personal).map(([platform, list]) => [platform, list.length])), accountContacts: Object.values(changes.get('account-contacts.json') || {}).reduce((n, c) => n + (c.list?.length || 0), 0) };
+  atomic(path.join(dataDir, 'cloud-restore-report.json'), report);
+  fs.unlinkSync(marker); return report;
 }
 module.exports = { collect, read, atomic, safeAccount, knowledgeExport, applyPending, accountIdentity, mergeById };

@@ -17,19 +17,28 @@ const cleanPhone = (s) => String(s || '').replace(/\D/g, '');
 const cleanUsername = (s) => String(s || '').trim().replace(/^https?:\/\/t\.me\//i, '').replace(/^@/, '');
 const looksLikePhone = (s) => /^\+?[\d\s-]{6,}$/.test(String(s || '').trim());
 
-const contactKey = (platform, c) => (platform === 'whatsapp' ? c.phone : (c.username || '').toLowerCase() || c.phone);
+const contactKey = (platform, c) => (platform === 'whatsapp' ? cleanPhone(c.phone) || cleanUsername(c.username).toLowerCase() : (c.username || '').toLowerCase() || c.phone);
 const contactLabel = (platform, c) => {
-  if (platform === 'whatsapp') return `+${c.phone}`;
+  if (platform === 'whatsapp') return cleanPhone(c.phone) ? `+${cleanPhone(c.phone)}` : c.username ? '@' + cleanUsername(c.username) : '';
   return c.username ? `@${c.username}` : c.phone ? `+${c.phone}` : '';
 };
 
 async function loadContacts() {
   contacts = { whatsapp: [], telegram: [], ...((await window.api.storeGet('contacts')) || {}) };
   accountContacts = (await window.api.storeGet('account-contacts')) || {};
+  const rebound = window.ContactRestore.rebind(accountContacts, accounts);
+  if (rebound.changed) { accountContacts = rebound.value; await saveAccountContacts(); }
+  if (sideTab === 'contacts') renderContacts();
 }
 
 const saveContacts = () => window.api.storeSet('contacts', contacts);
 const saveAccountContacts = () => window.api.storeSet('account-contacts', accountContacts);
+window.rebindRestoredContacts = () => {
+  const rebound = window.ContactRestore.rebind(accountContacts, accounts);
+  if (!rebound.changed) return;
+  accountContacts = rebound.value; saveAccountContacts();
+  if (sideTab === 'contacts') renderContacts();
+};
 
 function normalizeContact(platform, raw) {
   const name = String(raw.name || '').trim();
@@ -86,6 +95,7 @@ function fetchAccountContacts(accId) {
 
 const syncing = new Set();
 async function syncAccountContacts(accId, force = false) {
+  window.rebindRestoredContacts();
   const acc = findAcc(accId);
   if (!acc || !BULK_PLATFORMS.includes(acc.platform) || status[accId] !== 'in' || syncing.has(accId)) return;
   if (!force && Date.now() - (accountContacts[accId]?.at || 0) < SYNC_EVERY) return;
@@ -96,7 +106,8 @@ async function syncAccountContacts(accId, force = false) {
     if (force) toast(`「${acc.name}」联系人读取失败：${r.error}`, true);
     return;
   }
-  accountContacts[accId] = { at: Date.now(), list: r.list };
+  const rebound = window.ContactRestore.rebind(accountContacts, accounts); accountContacts = rebound.value;
+  accountContacts[accId] = { ...accountContacts[accId], at: Date.now(), identity: window.ContactRestore.identity(acc), list: window.ContactRestore.merge(accountContacts[accId]?.list || [], Array.isArray(r.list) ? r.list : []) };
   saveAccountContacts();
   if (sideTab === 'contacts') renderContacts();
   if (force) toast(`「${acc.name}」同步了 ${r.list.length} 个联系人`);

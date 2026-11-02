@@ -91,7 +91,7 @@
     if (!homeOpen || !['ai', 'knowledge'].includes(tab) || !selectedAIAccount) return;
     if (aiDirty || $('ai-guide-request').value.trim()) aiFormDrafts.set(selectedAIAccount, { dirty: aiDirty, enabled: $('ai-enabled').checked, baseId: $('ai-base-checks').querySelector('input:checked')?.value, instructions: $('ai-instructions').value, replyGuide: $('ai-reply-guide').value, delay: $('ai-delay').value, daily: $('ai-daily').value, request: $('ai-guide-request').value });
   }
-  window.onAccountNavigate = (accountId) => {if(PLATFORMS[findAcc(accountId)?.platform]?.nativeOnly){if(homeOpen)leaveHome();return;}
+  window.onAccountNavigate = (accountId) => {if(PLATFORMS[findAcc(accountId)?.platform]?.nativeOnly){if(homeOpen&&tab==='knowledge'){saveAIFormDraft();selectedAIAccount=null;scopedAccount=null;render();pushAll();}else if(homeOpen)leaveHome();return;}
     if (homeOpen && ['ai', 'knowledge'].includes(tab)) {
       saveAIFormDraft(); selectedAIAccount = accountId; scopedAccount = accountId; aiDirty = false;
       $('ai-test-result').textContent = ''; $('ai-test-question').value = ''; $('ai-guide-status').textContent = ''; $('ai-guide-request').value = '';
@@ -100,21 +100,28 @@
   };
   function contextAccountId() { return homeOpen ? tab === 'accounts' ? null : tab === 'inbox' ? scopedAccount : selectedAIAccount : activeId(); }
   window.openAccountAISettings = (accountId = contextAccountId()) => {if(PLATFORMS[findAcc(accountId)?.platform]?.nativeOnly)return toast(local('此平台目前提供原生网页版入口。','This platform currently provides its native web interface.'),true);
-    if (!accountId || contextAccountId() !== accountId || !findAcc(accountId)) return toast(t('请先打开一个账号，再点击右侧 AI 回复。'), true);
+    if (!accountId || !findAcc(accountId)) return window.openKnowledgeSettings();
+    if (contextAccountId() !== accountId) return toast(t('请先打开一个账号，再点击右侧 AI 回复。'), true);
     aiReturnToMessages = homeOpen ? tab === 'inbox' || aiReturnToMessages : false;
     saveAIFormDraft(); aiDirty = false; if (selectedAIAccount !== accountId) { $('ai-test-result').textContent = ''; $('ai-guide-request').value = ''; } selectedAIAccount = accountId; showHome('ai'); renderAIForm(true);
+  };
+  window.openKnowledgeSettings = () => {
+    const id = contextAccountId(); saveAIFormDraft();
+    selectedAIAccount = id && findAcc(id) && !PLATFORMS[findAcc(id).platform]?.nativeOnly ? id : null;
+    showHome('knowledge');
   };
   async function showAccountMessages(accountId) {
     const acc = findAcc(accountId); if (!acc) return;
     if (homeOpen) leaveHome(); scopedAccount = accountId; activate(accountId);
   }
   window.showAccountMessages = showAccountMessages;
-  window.onAccountOnline = (accountId) => { if (homeOpen && tab === 'inbox' && scopedAccount === accountId) syncAccounts(); };
+  const onAccountOnlineBeforeHub = window.onAccountOnline;
+  window.onAccountOnline = (accountId) => { onAccountOnlineBeforeHub?.(accountId); if (homeOpen && tab === 'inbox' && scopedAccount === accountId) syncAccounts(); };
   window.leaveInboxHome = leaveHome;
   $('home-btn').addEventListener('click', () => showHome('accounts'));
   $('hub-back-messages').addEventListener('click', () => showAccountMessages(selectedAIAccount));
-  $('ai-tool-btn').addEventListener('click',()=>{if(homeOpen&&['ai','knowledge'].includes(tab)){leaveHome();renderViews();}else window.openAccountAISettings();});
-  document.querySelectorAll('#ai-navigation button').forEach((button) => button.addEventListener('click', () => { tab = button.dataset.aiTab; render(); }));
+  $('ai-tool-btn').addEventListener('click',()=>{if(homeOpen&&['ai','knowledge'].includes(tab)){leaveHome();renderViews();}else if(!contextAccountId()||PLATFORMS[findAcc(contextAccountId())?.platform]?.nativeOnly)window.openKnowledgeSettings();else window.openAccountAISettings();});
+  document.querySelectorAll('#ai-navigation button').forEach((button) => button.addEventListener('click', () => { if(button.dataset.aiTab==='ai'&&!findAcc(selectedAIAccount))return;saveAIFormDraft();tab = button.dataset.aiTab; render(); }));
   $('home-search').addEventListener('input', renderAccounts);
   window.refreshAccountOverview = scheduleRender;
   document.addEventListener('pointerdown', () => window.api.clearAttention?.(), { capture: true, passive: true });
@@ -409,14 +416,19 @@
   }
   function render() {
     if (!homeOpen) return;
+    const hasAIAccount = !!findAcc(selectedAIAccount) && !PLATFORMS[findAcc(selectedAIAccount)?.platform]?.nativeOnly;
+    if (['ai','knowledge'].includes(tab) && !hasAIAccount) { selectedAIAccount = null; tab = 'knowledge'; }
     for (const name of ['accounts', 'inbox', 'ai', 'knowledge']) $('hub-' + name).hidden = tab !== name;
-    $('hub-title').textContent = tab === 'accounts' ? t('所有账号') : tab === 'inbox' ? accountLabel(scopedAccount) : tab === 'ai' ? t('AI 回复') : `${accountLabel(selectedAIAccount)} · ${t('知识库')}`;
+    $('hub-title').textContent = tab === 'accounts' ? t('所有账号') : tab === 'inbox' ? accountLabel(scopedAccount) : tab === 'ai' ? t('AI 回复') : selectedAIAccount ? `${accountLabel(selectedAIAccount)} · ${t('知识库')}` : t('知识库');
     $('hub-title').setAttribute('data-i18n-skip', '');
     $('hub-back-home').hidden = true; $('hub-refresh').hidden = tab !== 'inbox';
-    $('hub-back-messages').hidden = !['ai', 'knowledge'].includes(tab);
+    $('hub-back-messages').hidden = !['ai', 'knowledge'].includes(tab) || !hasAIAccount;
     $('ai-navigation').hidden = !['ai', 'knowledge'].includes(tab);
     $('ai-tool-btn').classList.toggle('active', ['ai', 'knowledge'].includes(tab));
     document.querySelectorAll('#ai-navigation button').forEach((button) => button.classList.toggle('active', button.dataset.aiTab === tab));
+    const accountTab = document.querySelector('#ai-navigation [data-ai-tab="ai"]'); accountTab.disabled = !hasAIAccount; accountTab.title = hasAIAccount ? '' : local('请先新建并选中账号会话', 'Create and select an account session first');
+    if(!hasAIAccount){$('ai-account-fields').disabled=true;$('ai-enabled').disabled=true;$('ai-save').disabled=true;}
+    $('knowledge-account-hint').hidden = hasAIAccount; $('knowledge-account-hint').textContent = local('知识库可以先查看、上传和学习资料；新建并选中账号会话后，才能设置账号 AI 回复。', 'View, upload and learn knowledge first. Create and select an account session before configuring account AI replies.');
     filterOptions();
     if (tab === 'accounts') renderAccounts();
     if (tab === 'inbox') { renderConversations(); renderThread(); }

@@ -221,6 +221,7 @@ function createView(acc) {
     if (e.channel === 'wam:bulk-result') bulkWaiters[e.args[0].jobId]?.(e.args[0]);
     if (e.channel === 'wam:self' && JSON.stringify(acc.self) !== JSON.stringify(e.args[0])) {
       acc.self = e.args[0];
+      window.rebindRestoredContacts?.();
       persist();
       renderList();
     }
@@ -1341,7 +1342,7 @@ function setSidePanel(tab) {
 
 function updateToolbar() {
   const platformChanged = toolbarPlatform !== currentPlatform; toolbarPlatform = currentPlatform;
-  const nativeOnly=!!PLATFORMS[currentPlatform].nativeOnly;document.querySelectorAll('.tool-btn[data-tab]').forEach(b=>b.hidden=nativeOnly);$('ai-tool-btn').hidden=nativeOnly;const ok = !nativeOnly&&BULK_PLATFORMS.includes(currentPlatform);if(nativeOnly&&sideTab)setSidePanel(null);
+  const nativeOnly=!!PLATFORMS[currentPlatform].nativeOnly;document.querySelectorAll('.tool-btn[data-tab]').forEach(b=>b.hidden=nativeOnly);$('ai-tool-btn').hidden=false;const ok = !nativeOnly&&BULK_PLATFORMS.includes(currentPlatform);if(nativeOnly&&sideTab)setSidePanel(null);
   if (sideTab === 'notes') window.conversationNotes?.refreshAccount();
   document.querySelectorAll('.tool-btn.wa-tg').forEach((b) => { b.hidden = !ok; });
   if (!ok && (sideTab === 'contacts' || sideTab === 'bulk')) setSidePanel(null);

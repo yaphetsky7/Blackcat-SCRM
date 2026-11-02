@@ -4,7 +4,7 @@ const {resolveChatIdentity}=require('./backup-identities');
 const digest = value => crypto.createHash('sha256').update(value).digest('hex');
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const extensions = {'image/jpeg':'.jpg','image/png':'.png','image/webp':'.webp','image/gif':'.gif','video/mp4':'.mp4','video/webm':'.webm','audio/ogg':'.ogg','audio/mpeg':'.mp3','audio/mp4':'.m4a','application/pdf':'.pdf'};
-function createArchive(root) {
+function createArchive(root, { cloudOutbox = false } = {}) {
   root = path.resolve(root); fs.mkdirSync(root,{recursive:true}); fs.mkdirSync(path.join(root,'media'),{recursive:true}); fs.mkdirSync(path.join(root,'.partial'),{recursive:true});
   const db = new DatabaseSync(path.join(root,'chat-archive.sqlite')); db.exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
     CREATE TABLE IF NOT EXISTS accounts(id TEXT PRIMARY KEY,name TEXT,platform TEXT);
@@ -22,10 +22,11 @@ function createArchive(root) {
   // listsig: the chat-list preview/time when the chat was last saved, so unchanged chats can be skipped next run.
   if(!db.prepare("SELECT 1 FROM pragma_table_info('chats') WHERE name='listsig'").get())db.exec("ALTER TABLE chats ADD COLUMN listsig TEXT DEFAULT ''");
   db.exec('CREATE INDEX IF NOT EXISTS assets_conversation ON assets(account,chat,status); CREATE INDEX IF NOT EXISTS assets_message ON assets(account,chat,message,slot)');
+  if (cloudOutbox) { db.exec('PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS cloud_ack(account TEXT,chat TEXT,id TEXT,hash TEXT,PRIMARY KEY(account,chat,id));'); if (!db.prepare("SELECT 1 FROM pragma_table_info('messages') WHERE name='cloud_hash'").get()) db.exec("ALTER TABLE messages ADD COLUMN cloud_hash TEXT DEFAULT ''"); }
   function identity(account,chat){const v=resolveChatIdentity(account.platform,chat);if(v.phone||v.username)db.prepare("INSERT INTO chat_identities VALUES(?,?,?,?) ON CONFLICT(account,chat) DO UPDATE SET username=CASE WHEN excluded.username!='' THEN excluded.username ELSE username END,phone=CASE WHEN excluded.phone!='' THEN excluded.phone ELSE phone END").run(account.id,chat.key,v.username,v.phone);}
   function ingest(account, payload) {
     if (!payload?.chat?.key || !Array.isArray(payload.messages)) throw Error('没有可识别的对话');
-    payload={...payload,messages:payload.messages.filter(m=>typeof m.id==='string'&&!db.prepare('SELECT 1 FROM deleted_messages WHERE account=? AND chat=? AND id=?').get(account.id,payload.chat.key,m.id))};
+    payload={...payload,messages:payload.messages.filter(m=>typeof m.id==='string'&&!db.prepare('SELECT 1 FROM deleted_messages WHERE account=? AND chat=? AND id=?').get(account.id,payload.chat.key,m.id)&&(!cloudOutbox||db.prepare('SELECT 1 FROM messages WHERE account=? AND chat=? AND id=?').get(account.id,payload.chat.key,m.id)||db.prepare('SELECT hash FROM cloud_ack WHERE account=? AND chat=? AND id=?').get(account.id,payload.chat.key,m.id)?.hash!==require('./cloud-outbox').messageSignature(m)))};
     if(!payload.messages.length)return [];
     const now = Date.now(); const wanted=[];
     db.exec('BEGIN IMMEDIATE');try {
@@ -38,7 +39,8 @@ function createArchive(root) {
         const data=JSON.stringify({id:m.id,text:String(m.text||''),direction:['incoming','outgoing'].includes(m.direction)?m.direction:'unknown',author:String(m.author||''),time:String(m.time||''),sourceIdentity:m.sourceIdentity||'platform',reactions:Array.isArray(m.reactions)?m.reactions:[],observedAt:now});
         const hash=digest(JSON.stringify({text:m.text||'',direction:m.direction,author:m.author||'',time:m.time||'',reactions:m.reactions||[]}));
         db.prepare('INSERT OR IGNORE INTO revisions VALUES(?,?,?,?,?,?)').run(account.id,payload.chat.key,m.id,hash,data,now);
-        db.prepare('INSERT INTO messages VALUES(?,?,?,?,?,?) ON CONFLICT(account,chat,id) DO UPDATE SET data=excluded.data,lastSeen=excluded.lastSeen').run(account.id,payload.chat.key,m.id,data,now,now);
+        db.prepare('INSERT INTO messages(account,chat,id,data,firstSeen,lastSeen) VALUES(?,?,?,?,?,?) ON CONFLICT(account,chat,id) DO UPDATE SET data=excluded.data,lastSeen=excluded.lastSeen').run(account.id,payload.chat.key,m.id,data,now,now);
+        if (cloudOutbox) db.prepare('UPDATE messages SET cloud_hash=? WHERE account=? AND chat=? AND id=?').run(require('./cloud-outbox').messageSignature(m), account.id, payload.chat.key, m.id);
         for(const slot of m.ignoredAssetSlots||[])db.prepare("UPDATE assets SET status='superseded',error='已重新识别为表情或消息反应' WHERE account=? AND chat=? AND message=? AND slot=?").run(account.id,payload.chat.key,m.id,String(slot));
         for(const slot of m.ignoredImageSlots||[])db.prepare("UPDATE assets SET status='superseded',error='已重新识别为影片封面' WHERE account=? AND chat=? AND message=? AND slot=? AND kind='image'").run(account.id,payload.chat.key,m.id,String(slot));
         const originalVideos=db.prepare("SELECT COUNT(*) n FROM assets WHERE account=? AND chat=? AND message=? AND kind='video' AND status='saved' AND quality='download-link'").get(account.id,payload.chat.key,m.id).n;
