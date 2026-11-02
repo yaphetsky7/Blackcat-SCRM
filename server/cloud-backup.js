@@ -25,7 +25,7 @@ function createCloudBackup({ store, storage = createR2(), env = process.env }) {
   }
   const storageCall = require('./storage-retry').createStorageRetry({ beforeAttempt: kind => { if (kind === 'A' || kind === 'B') operation(kind); }, report: event => console.warn('cloud-storage-retry', JSON.stringify(event)) });
   function state(user) {
-    return { configured: storage.configured, eligible: !!quota(user), quotaBytes: quota(user), usedBytes: usage(user), trial: globalLimit <= 10e9, sharedLimitBytes: globalLimit, sharedUsedBytes: usedAll(), snapshots: db.prepare('SELECT id,device,label,created,bytes FROM cloud_snapshots WHERE user_id=? ORDER BY created DESC').all(user.id) };
+    return { configured: storage.configured, eligible: !!quota(user), quotaBytes: quota(user), usedBytes: usage(user), trial: globalLimit <= 10e9, sharedLimitBytes: globalLimit, sharedUsedBytes: usedAll(), workspace: sync.status(user), snapshots: db.prepare('SELECT id,device,label,created,bytes FROM cloud_snapshots WHERE user_id=? ORDER BY created DESC').all(user.id) };
   }
   const key = (user, h) => 'v1/' + user.id + '/' + h;
   const busy = new Set();

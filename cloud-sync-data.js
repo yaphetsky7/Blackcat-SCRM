@@ -6,6 +6,7 @@ const stable = value => JSON.stringify(sort(value));
 function sort(value) { if (Array.isArray(value)) return value.map(sort); if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().filter(k => value[k] !== undefined).map(k => [k, sort(value[k])])); return value; }
 const identityKey = a => { const i = identity(a); return i.phone ? i.platform + ':p:' + i.phone : i.username ? i.platform + ':u:' + i.username : ''; };
 const rowKey = row => row.kind + ':' + hash(stable(row.key));
+const priority = kind => ({ note: 0, knowledge: 1, 'ai-config': 2, group: 3, template: 4, list: 5, quick: 6, contact: 7, 'account-contact': 8 }[kind] ?? 9);
 function portableBase(base) {
   const b = structuredClone(base);
   for (const d of b.documents || []) { delete d.connection; delete d.learningProgress; if (d.url) { try { const u = new URL(d.url); u.username = ''; u.password = ''; u.search = ''; d.url = u.href; } catch { delete d.url; } } }
@@ -76,4 +77,4 @@ function applyRows(records, changes, linked) {
   }
   return touched;
 }
-module.exports = { stable, rowKey, exportRows, applyRows, filesFor, identityKey };
+module.exports = { stable, rowKey, exportRows, applyRows, filesFor, identityKey, priority };

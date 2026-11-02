@@ -2,7 +2,7 @@
 const fs = require('fs'), path = require('path'), os = require('os'), crypto = require('crypto');
 const { Worker } = require('worker_threads');
 const { atomic, read } = require('./cloud-data');
-function registerCloud({ app, ipcMain, dialog, shell, getWindow, license, backupService, aiService, notesStore }) {
+function registerCloud({ app, ipcMain, dialog, shell, getWindow, license, backupService, aiService, notesStore, schedule=setInterval, unschedule=clearInterval, makeWorker=(file,options)=>new Worker(file,options) }) {
   const dataDir = app.getPath('userData'), settingsFile = path.join(dataDir, 'cloud-settings.json');
   let settings = read(settingsFile, {}), current = null;
   const owner = () => license.state().profile?.username || '';
@@ -19,15 +19,15 @@ function registerCloud({ app, ipcMain, dialog, shell, getWindow, license, backup
     const expectedOwner = owner(), c = connection(), res = await fetch(c.server + '/api/cloud/' + route, { method, redirect: 'error', headers: { authorization: 'Bearer ' + c.token, 'x-blackcat-version': c.version, 'content-type': Buffer.isBuffer(body) ? 'application/octet-stream' : 'application/json' }, body: body === undefined ? undefined : Buffer.isBuffer(body) ? body : JSON.stringify(body), signal: signal || AbortSignal.timeout(120000) });
     if (owner() !== expectedOwner) { await res.body?.cancel(); throw Error('黑猫账号已改变，请重新操作'); }
     if (binary && res.ok) return Buffer.from(await res.arrayBuffer());
-    const result = await res.json(); if (!res.ok || !result.ok) throw Error(result.error || '云备份请求失败'); return result.data;
+    const result = await res.json(); if (!res.ok || !result.ok) throw Object.assign(Error(result.error || '云备份请求失败'),{status:res.status}); return result.data;
   }
-  async function state() { const b = backupService.state(); return { ...await request('state'), ...config(), businessSync: businessClient?.owner === owner() ? businessClient.client.status() : {}, cloudPrimary: b.storageMode === 'cloud', pendingMessages: b.storageMode === 'cloud' ? b.counts.messages : 0, captureEnabled: b.enabled, scanRunning: !!b.running, scanProgress: b.running?.progress || '', running: !!current, progress: current?.progress || '' }; }
-  let businessClient = null, businessAttempt = 0, businessTask = null;
+  async function state() { const b = backupService.state(),remote=await request('state'),local=businessClient?.owner===owner()?businessClient.client.status():{}; return { ...remote, ...config(), businessSync: {...local,cloudCounts:remote.workspace?.counts||local.workspace?.counts||{},migration:remote.workspace?.migration||local.workspace?.migration||{},running:!!businessTask||local.running}, cloudPrimary: b.storageMode === 'cloud', pendingMessages: b.storageMode === 'cloud' ? b.counts.messages : 0, captureEnabled: b.enabled, scanRunning: !!b.running, scanProgress: b.running?.progress || '', running: !!current, progress: current?.progress || '' }; }
+  let businessClient = null, businessAttempt = 0, businessTask = null, businessDelay = 15000;
   const edits = new Map();
   ipcMain.on('cloud:editing', (e, { key, busy } = {}) => { if (e.sender !== getWindow()?.webContents || typeof key !== 'string') return; if (busy) edits.set(key, Date.now()); else edits.delete(key); });
   async function syncBusiness() {
     if (businessTask) return { running: true };
-    businessTask = runBusiness();
+    businessTask = runBusiness(); notify();
     try { return await businessTask; } finally { businessTask = null; }
   }
   async function runBusiness() {
@@ -41,17 +41,18 @@ function registerCloud({ app, ipcMain, dialog, shell, getWindow, license, backup
       const client = require('./cloud-sync-client').createSyncClient({ dataDir, owner: user, device,
         request: (...args) => { if (owner() !== user || !primaryPlan()) throw Error('黑猫账号已改变，已暂停同步'); return request(...args); },
         canApply: () => owner() === user && primaryPlan() && !aiService?.syncBusy?.() && ![...edits.values()].some(at => Date.now() - at < 120000),
-        onApplied: files => { if (files.includes('ai-knowledge.json')) aiService?.reloadCloud?.(); if (files.includes('conversation-notes.json')) notesStore?.reload?.(); const w = getWindow(); if (w && !w.isDestroyed()) w.webContents.send('cloud:business-changed', files); }
+        onApplied: files => { if (files.includes('ai-knowledge.json')) aiService?.reloadCloud?.(); if (files.includes('conversation-notes.json')) notesStore?.reload?.(); const w = getWindow(); if (w && !w.isDestroyed()) w.webContents.send('cloud:business-changed', files); },
+        onProgress: () => { if(Date.now()-(businessClient?.lastNotice||0)>1000){if(businessClient)businessClient.lastNotice=Date.now();notify();} }
       }); businessClient = { owner: user, client };
     }
     await reconcileAccounts();
-    try { const result = await businessClient.client.cycle(); save({ businessError: '' }); return result; } finally { notify(); }
+    try { const result = await businessClient.client.cycle(); businessDelay=result.more?2000:15000;save({ businessError: '' }); return result; } finally { notify(); }
   }
   function start(job) {
     if (current) throw Error('已有云备份任务正在运行');
     if (fs.existsSync(path.join(dataDir, 'cloud-pending-restore.json'))) throw Error('有下载完成的恢复点等待导入，请先重新打开软件');
     const c = connection(), user = owner();
-    const worker = new Worker(path.join(__dirname, 'cloud-worker.js'), { workerData: { ...job, ...c, dataDir, label: os.hostname() } });
+    const worker = makeWorker(path.join(__dirname, 'cloud-worker.js'), { workerData: { ...job, ...c, dataDir, label: os.hostname() } });
     const task = current = { worker, owner: user, action: job.action, progress: '正在准备 / Preparing…', done: false };
     const finish = (error, result) => {
       if (task.done) return; task.done = true;
@@ -112,18 +113,18 @@ function registerCloud({ app, ipcMain, dialog, shell, getWindow, license, backup
   handle('cleanup', async () => { if (current) throw Error('请先等待当前任务结束'); await request('cleanup', 'POST'); return state(); });
   handle('open', async () => { const folder = config().lastDownload?.folder; if (!folder) throw Error('请先下载恢复点'); const error = await shell.openPath(folder); if (error) throw Error(error); return true; });
   handle('restart', () => { if (current || backupService.isBusy()) throw Error('请先停止正在进行的备份'); app.relaunch(); app.quit(); return true; });
-  const clock = setInterval(async () => {
-    if (!license.loggedIn() || current) return;
+  const clock = schedule(async () => {
+    if (!license.loggedIn()) return;
     backupService.state();
-    if (primaryPlan() && config().automatic !== false && Date.now() - businessAttempt > 15000) {
+    if (!businessTask && primaryPlan() && config().automatic !== false && Date.now() - businessAttempt > businessDelay) {
       businessAttempt = Date.now(); try { await syncBusiness(); } catch (e) { save({ businessError: e.message }); notify(); }
     }
-    if (primaryPlan() && config().archiveEnabled !== false && Date.now() - (config().primaryAttempt || 0) > 60000) {
+    if (!current && primaryPlan() && config().archiveEnabled !== false && Date.now() - (config().primaryAttempt || 0) > 60000) {
       save({ primaryAttempt: Date.now() });
       try { const service = await request('state'); if (service.configured) { const started = syncPrimary(); if (started.started) return; } }
       catch (e) { save({ primaryError: e.message }); notify(); }
     }
-  }, 15000); clock.unref?.();
+  }, 5000); clock.unref?.();
   backupService.state();
   backupService.setCloudRecent(r => request('archive/recent', 'POST', r));
   let accountLifecycle = Promise.resolve(), lifecycleRunning = false;
@@ -148,7 +149,7 @@ function registerCloud({ app, ipcMain, dialog, shell, getWindow, license, backup
     for (const a of previous || []) { const safe = require('./cloud-data').safeAccount(a); if (safe.me.phone || safe.me.username) linked[a.id] = safe; if (!(accounts || []).some(b => b.id === a.id)) { lifecycle[user] ||= {}; lifecycle[user][a.id] = { at: Date.now(), account: safe }; } }
     atomic(linkedFile, linked); atomic(lifecycleFile, lifecycle); reconcileAccounts().catch(() => {});
   });
-  app.on('before-quit', () => { clearInterval(clock); current?.worker.terminate(); });
+  app.on('before-quit', () => { unschedule(clock); current?.worker.terminate(); });
   return { state, request, owner, syncPrimary, downloadedFolder: () => config().lastDownload?.folder || '' };
 }
 module.exports = { registerCloud };

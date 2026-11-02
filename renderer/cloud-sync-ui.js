@@ -19,9 +19,10 @@
     el('upload').textContent = t('立即同步资料', 'Sync workspace now'); el('refresh').textContent = t('刷新状态', 'Refresh status');
     el('cleanup').textContent = t('清理无引用的云端文件', 'Clean up unreferenced cloud files');
     el('note').textContent = t('仅在软件运行且联网时同步。删除资料也会同步到其他电脑。平台登录与 API 密钥不上传；新电脑需重新登录平台，AI 自动回复需自行开启，群发任务不会自动执行。尚未读取的历史和未获取的原附件需补存。', 'Sync runs while the app is open and online. Deletions sync across computers too. Platform logins and API secrets are excluded. Sign into platforms again and enable AI replies on each computer; bulk jobs never start automatically. Unreadable history and unavailable original attachments still need collection.');
-    const sync = state?.businessSync || {}, counts = sync.counts || {};
-    const groups = [['联系人', 'Contacts', (counts.contact || 0) + (counts['account-contact'] || 0)], ['群发名单', 'Recipient lists', counts.list || 0], ['群发文案', 'Message templates', counts.template || 0], ['AI 知识库', 'AI knowledge bases', counts.knowledge || 0], ['对话备注', 'Conversation notes', counts.note || 0]];
-    el('categories').replaceChildren(...groups.map(([zh, english, n]) => { const card = document.createElement('div'); card.className = 'cloud-category'; const label = document.createElement('span'), count = document.createElement('strong'); label.textContent = t(zh, english); count.textContent = n; card.append(label, count); return card; }));
+    const sync = state?.businessSync || {}, counts = sync.cloudCounts || sync.counts || {}, local = sync.localCounts || {}, pending = sync.pendingCounts || {};
+    const groups = [['联系人', 'Contacts', ['contact','account-contact']], ['群发名单', 'Recipient lists', ['list']], ['群发文案', 'Message templates', ['template']], ['AI 知识库', 'AI knowledge bases', ['knowledge']], ['对话备注', 'Conversation notes', ['note']]];
+    const sum=(source,kinds)=>kinds.reduce((n,k)=>n+(source[k]||0),0);
+    el('categories').replaceChildren(...groups.map(([zh, english, kinds]) => { const card = document.createElement('div'); card.className = 'cloud-category'; const label = document.createElement('span'), count = document.createElement('strong'), detail=document.createElement('small'); label.textContent = t(zh, english); count.textContent = sum(counts,kinds);detail.textContent=t('云端已保存','Saved in cloud')+' · '+t('本机 ','Local ')+sum(local,kinds)+' · '+t('待同步 ','Pending ')+sum(pending,kinds);card.append(label, count,detail); return card; }));
     if (!state) return;
     el('capture').checked = !!state.captureEnabled; el('capture').disabled = busy || !state.eligible;
     el('view').disabled = busy || !state.configured; el('sync').disabled = busy || state.running || !state.configured || !state.eligible;
@@ -32,7 +33,10 @@
     el('service').textContent = !state.configured ? t('云储存尚未连接，请联系管理员。', 'Cloud storage is not connected. Contact your administrator.') : state.trial ? t('R2 试用总量保护已开启；达到保护上限时暂停上传，待传资料会保留。', 'Shared R2 trial protection is enabled. Uploads pause at the limit and pending data is retained.') : t('云储存已连接', 'Cloud storage connected');
     el('automatic').checked = state.automatic !== false; el('automatic').disabled = !state.eligible || busy;
     el('upload').disabled = busy || sync.running || !state.configured || !state.eligible;
-    el('status').textContent = sync.error || state.businessError || (sync.running ? t('正在同步资料…', 'Syncing workspace…') : sync.lastRun ? t('已同步 · ', 'Synced · ') + new Date(sync.lastRun).toLocaleString(en() ? 'en-SG' : 'zh-CN') : t('等待首次同步', 'Waiting for first sync'));
+    const phase={prepare:t('正在准备同步','Preparing sync'),priority:t('正在读取知识库、名单与备注','Loading knowledge, lists and notes'),upload:t('正在上传资料','Uploading workspace data'),confirm:t('正在确认云端保存','Confirming cloud storage'),download:t('正在读取联系人等云端资料','Loading contacts and cloud updates')};
+    const p=sync.progress,parts=[];if(sync.error||state.businessError)parts.push(sync.error||state.businessError);if(p)parts.push((phase[p.phase]||t('正在同步','Syncing'))+(p.total?' '+p.done+'/'+p.total:''));else if(sync.running)parts.push(t('正在同步资料…','Syncing workspace…'));
+    if(sync.pending)parts.push(t('待上传/更新：','Pending uploads/edits: ')+sync.pending);if(sync.more)parts.push(t('还有云端资料正在分批读取','More cloud data is being loaded in batches'));if(sync.migration?.running||sync.migration?.more)parts.push(t('旧资料正在后台补充','Legacy data is being added in the background')+(sync.migration.total?' '+sync.migration.done+'/'+sync.migration.total:''));
+    if(!parts.length)parts.push(sync.lastRun?t('已全部同步 · ','Fully synced · ')+new Date(sync.lastRun).toLocaleString(en()?'en-SG':'zh-CN'):t('等待首次同步','Waiting for first sync'));el('status').textContent=parts.join(' · ');
   }
   async function refresh() { state = await call('state'); draw(); }
   async function run(fn) { if (busy) return; busy = true; draw(); let error; try { await fn(); await refresh(); } catch (e) { error = e.message; } finally { busy = false; draw(); if (error) el('status').textContent = error; } }
