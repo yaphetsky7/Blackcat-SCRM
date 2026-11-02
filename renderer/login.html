@@ -8,21 +8,51 @@
 </head>
 <body>
   <main class="login">
-    <form id="login-form" class="card" autocomplete="on">
-      <img src="blackcat.svg" alt="" class="logo">
-      <h1>黑猫SCRM</h1>
-      <p class="sub" data-en="Sign in with the account you were given">请使用开通的账号登录</p>
-      <p id="reason" class="notice" role="status" hidden></p>
-      <label><span data-en="Username">用户名</span><input id="username" autocomplete="username" required></label>
-      <label><span data-en="Password">密码</span><input id="password" type="password" autocomplete="current-password" required></label>
-      <details id="server-box">
-        <summary data-en="Server">服务器</summary>
-        <label><span data-en="Server address">服务器地址</span><input id="server" type="url" placeholder="https://"></label>
-      </details>
-      <button id="submit" type="submit" data-en="Sign in">登录</button>
-      <p id="error" class="error" role="alert"></p>
-      <p class="hint" data-en="No account? Contact customer service to subscribe.">没有账号？请联系客服开通配套。</p>
-    </form>
+    <section class="brand" aria-hidden="true">
+      <div class="brand-top"><img src="blackcat.svg" alt="" class="brand-logo"><span>黑猫SCRM</span></div>
+      <div class="brand-mid">
+        <h2 data-en="All your chat accounts in one window">所有聊天账号，一个窗口搞定</h2>
+        <ul class="features">
+          <li><svg viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4z"/></svg><span data-en="WhatsApp, Telegram, Messenger, LINE and more, side by side">WhatsApp、Telegram、Messenger、LINE 等多账号同时登录</span></li>
+          <li><svg viewBox="0 0 24 24"><path d="M3 5h10M8 3v2m-3 0q1 6 7 9m-2-9q-1 5-6 8m8 7 4-10 4 10m-7-3h6"/></svg><span data-en="Translate messages in 65 languages">消息翻译，支持 65 种语言</span></li>
+          <li><svg viewBox="0 0 24 24"><path d="M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2zM19 15l1 2.5 2.5 1-2.5 1L19 22l-1-2.5-2.5-1 2.5-1z"/></svg><span data-en="AI replies that learn from your knowledge base">AI 自动回复，按你的知识库回答</span></li>
+          <li><svg viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4z"/></svg><span data-en="Save messages, photos and videos to customer notes">消息、图片、影片一键保存到客户备注</span></li>
+        </ul>
+      </div>
+      <p class="brand-foot" data-en="Your chats stay on this computer.">聊天记录只保存在你的电脑</p>
+    </section>
+
+    <section class="panel">
+      <form id="login-form" class="card" autocomplete="on" novalidate>
+        <img src="blackcat.svg" alt="" class="logo">
+        <h1 data-en="Welcome back">欢迎回来</h1>
+        <p class="sub" data-en="Sign in with the account you were given">请使用开通的账号登录</p>
+        <p id="reason" class="notice" role="status" hidden></p>
+
+        <label class="field">
+          <span data-en="Username">用户名</span>
+          <span class="box">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21q1-6 8-6t8 6"/></svg>
+            <input id="username" autocomplete="username" required spellcheck="false">
+          </span>
+        </label>
+        <label class="field">
+          <span data-en="Password">密码</span>
+          <span class="box">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+            <input id="password" type="password" autocomplete="current-password" required>
+            <button type="button" id="toggle-password" class="eye" aria-label="显示密码" data-en-label="Show password">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </span>
+        </label>
+        <p id="caps" class="caps" hidden data-en="Caps Lock is on">大写锁定已开启</p>
+
+        <button id="submit" type="submit" class="primary" data-en="Sign in">登录</button>
+        <p id="error" class="error" role="alert"></p>
+        <p class="hint" data-en="No account? Contact customer service to subscribe.">没有账号？请联系客服开通配套。</p>
+      </form>
+    </section>
   </main>
   <script src="login.js"></script>
 </body>

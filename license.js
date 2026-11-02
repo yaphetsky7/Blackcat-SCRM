@@ -32,7 +32,7 @@ function createLicense({ dataDir, safeStorage, defaultServer = '', appVersion = 
 
   async function request(p, { method = 'GET', body, auth = true } = {}) {
     const base = server();
-    if (!/^https?:\/\//.test(base)) throw Error('请填写服务器地址');
+    if (!/^https?:\/\//.test(base)) throw Error('无法连接黑猫服务器，请联系客服');
     let res;
     try {
       res = await fetch(base + p, { method, headers: { 'content-type': 'application/json', 'x-blackcat-version': appVersion, ...(auth ? { authorization: 'Bearer ' + token() } : {}) }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(20000) });

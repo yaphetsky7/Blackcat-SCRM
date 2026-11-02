@@ -80,7 +80,7 @@ app.on('will-quit', flushTranslationCache);
 const { createLicense } = require('./license');
 const license = createLicense({ dataDir: app.getPath('userData'), safeStorage, appVersion: app.getVersion(), defaultServer: require('./package.json').blackcatServer || '', onChange: () => {
   if (!win || win.isDestroyed()) return;
-  win.webContents.send('license:changed', license.state());
+  win.webContents.send('license:changed', publicLicenseState());
   if (!license.loggedIn() && !win.webContents.getURL().endsWith('login.html')) win.loadFile(path.join(__dirname, 'renderer', 'login.html'));
 } });
 // 客户自己的 Claude Key 优先；没有时经黑猫服务器中转，按用量扣点。
@@ -322,11 +322,14 @@ ipcMain.handle('settings:get', () => publicSettings());
 const fromWindow = (e) => { if (e.sender !== win?.webContents) throw Error('无权访问'); };
 // Backup may scan the account on screen only while the user is away: idle 2+ minutes, or working in another program.
 ipcMain.handle('backup:user-idle', (e) => { fromWindow(e); return require('electron').powerMonitor.getSystemIdleTime() >= (backupService.state().idleMinutes || 2) * 60 || !win?.isFocused(); });
-ipcMain.handle('license:state', (e) => { fromWindow(e); return license.state(); });
-ipcMain.handle('license:refresh', async (e) => { fromWindow(e); return license.refresh(); });
+// What the screens see of the login: never the server address (it is built in and stays out of sight)
+function publicLicenseState(state = license.state()) { const { server, ...rest } = state; return rest; }
+ipcMain.handle('license:state', (e) => { fromWindow(e); return publicLicenseState(); });
+ipcMain.handle('license:refresh', async (e) => { fromWindow(e); return publicLicenseState(await license.refresh()); });
 ipcMain.handle('license:login', async (e, r = {}) => {
   fromWindow(e);
-  try { const state = await license.login(r); win.loadFile(path.join(__dirname, 'renderer', 'index.html')); return { ok: true, state }; }
+  // (only the username and password come from the screen; the server is always the built-in one)
+  try { const state = await license.login({ username: r.username, password: r.password }); win.loadFile(path.join(__dirname, 'renderer', 'index.html')); return { ok: true, state: publicLicenseState(state) }; }
   catch (err) { return { ok: false, error: err.message }; }
 });
 ipcMain.handle('license:logout', async (e) => { fromWindow(e); await license.logout(); return { ok: true }; });

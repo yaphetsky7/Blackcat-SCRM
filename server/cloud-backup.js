@@ -2,7 +2,7 @@
 const crypto = require('crypto');
 const { createR2 } = require('./r2');
 const { CHUNK, hash, isHash, validateManifest } = require('../cloud-format');
-const quotaFor = id => ({ business: 100e9, enterprise: 500e9 }[id] || 0);
+const quotaFor = id => ({ business: 100e9, enterprise: 500e9, test: 5e9 }[id] || 0);
 function createCloudBackup({ store, storage = createR2(), env = process.env }) {
   const db = store.db;
   db.exec(`CREATE TABLE IF NOT EXISTS cloud_chunks(user_id INTEGER NOT NULL, hash TEXT NOT NULL, size INTEGER NOT NULL, status TEXT NOT NULL, created INTEGER NOT NULL, PRIMARY KEY(user_id,hash));

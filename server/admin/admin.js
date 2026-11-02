@@ -32,8 +32,9 @@ $('login-form').addEventListener('submit', async (e) => {
 $('logout').addEventListener('click', async () => { await api('/logout', { method: 'POST' }).catch(() => {}); showLogin(); });
 document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
   document.querySelectorAll('[data-tab]').forEach((x) => x.classList.toggle('active', x === b));
-  for (const t of ['customers', 'plans', 'updates', 'settings']) $('tab-' + t).hidden = t !== b.dataset.tab;
+  for (const t of ['customers', 'plans', 'cloud', 'updates', 'settings']) $('tab-' + t).hidden = t !== b.dataset.tab;
   if (b.dataset.tab === 'updates') drawUpdates().catch((err) => alert(err.message));
+  if (b.dataset.tab === 'cloud') drawCloud().catch((err) => alert(err.message));
 }));
 
 async function refresh() {
@@ -69,7 +70,7 @@ $('search').addEventListener('input', drawCustomers);
 
 // ----- create / edit customer -----
 function fillPlanSelect(select, value) {
-  select.replaceChildren(...state.overview.plans.map((p) => { const o = document.createElement('option'); o.value = p.id; o.textContent = `${p.name}（$${p.price_month}/月）`; return o; }));
+  select.replaceChildren(...state.overview.plans.map((p) => { const o = document.createElement('option'); o.value = p.id; o.textContent = p.hidden ? `${p.name} · 内部，客户看不到` : `${p.name}（$${p.price_month}/月）`; return o; }));
   select.value = value || state.overview.plans[0]?.id;
 }
 function openCustomerForm(customer) {
@@ -140,9 +141,11 @@ $('detail-delete').addEventListener('click', async () => {
 // ----- plans -----
 function drawPlans() {
   $('plans').replaceChildren(...state.overview.plans.map((p) => {
-    const form = document.createElement('form'); form.className = 'card plan-card';
+    const form = document.createElement('form'); form.className = 'card plan-card' + (p.hidden ? ' internal' : '');
     const field = (name, label, type = 'number', step = 'any') => { const l = document.createElement('label'); l.textContent = label; const i = document.createElement('input'); i.name = name; i.type = type; i.step = step; i.value = p[name]; l.append(i); return l; };
     const h = document.createElement('h2'); h.textContent = p.name;
+    // Internal (test) plans never appear in the plan list customers see
+    if (p.hidden) { const tag = document.createElement('span'); tag.className = 'pill warn'; tag.textContent = '内部 · 客户看不到'; h.append(tag); }
     const grid = document.createElement('div'); grid.className = 'grid';
     grid.append(field('name', '名称', 'text'), field('price_month', '月费（USD）'), field('price_year', '年费（USD）'), field('included_accounts', '包含聊天账号', 'number', '1'),
       field('extra_price', '额外账号价格（USD/个）'), field('devices', '同时登录的电脑', 'number', '1'), field('monthly_points', '每月 AI 点数', 'number', '1'), field('kb_limit', '知识库数量', 'number', '1'));
@@ -176,6 +179,65 @@ $('admin-password-form').addEventListener('submit', async (e) => {
 });
 
 api('/overview').then(showApp, () => showLogin());
+
+// ---------- Cloud backup ----------
+const fmtBytes = (n) => { n = n || 0; if (n >= 1e9) return (n / 1e9).toFixed(n >= 1e11 ? 0 : 2) + ' GB'; if (n >= 1e6) return (n / 1e6).toFixed(1) + ' MB'; return Math.round(n / 1e3) + ' KB'; };
+function bar(used, limit) {
+  const ratio = limit > 0 ? Math.min(1, used / limit) : 0;
+  const b = document.createElement('div'); b.className = 'bar' + (ratio >= 0.95 ? ' full' : ratio >= 0.8 ? ' warn' : '');
+  const i = document.createElement('i'); i.style.width = (ratio * 100).toFixed(1) + '%'; b.append(i); return b;
+}
+function usageStat(value, label, used, limit) { const s = stat(value, label); s.append(bar(used, limit)); return s; }
+async function drawCloud() {
+  const d = await api('/cloud'), o = d.ops;
+  $('cloud-stats').replaceChildren(
+    stat(d.configured ? '已接通' : '未接通', 'R2 云储存'),
+    usageStat(`${fmtBytes(d.sharedUsedBytes)} / ${fmtBytes(d.sharedLimitBytes)}`, d.trial ? '全部客户已用（试用保护上限）' : '全部客户已用', d.sharedUsedBytes, d.sharedLimitBytes),
+    usageStat(`${o.A.toLocaleString()} / ${o.limitA.toLocaleString()}`, `本月写入请求（${o.month}）`, o.A, o.limitA),
+    usageStat(`${o.B.toLocaleString()} / ${o.limitB.toLocaleString()}`, `本月读取请求（${o.month}）`, o.B, o.limitB),
+    stat(String(d.customers.filter((c) => c.usedBytes > 0).length), '正在使用云备份的客户'));
+  $('cloud-note').hidden = d.configured && !d.trial;
+  $('cloud-note').textContent = !d.configured ? '服务器还没有接通 R2：客户上传云备份会失败，本机资料不受影响。请在服务器运行 blackcat-configure-r2。'
+    : '目前是试用保护：全部客户合计最多 ' + fmtBytes(d.sharedLimitBytes) + '（低于 R2 免费 10 GB）。正式开放 100 / 500 GB 前，需要在服务器提高 R2_TOTAL_LIMIT_BYTES，并承担实际用量费用。';
+  $('cloud-customers').tBodies[0].replaceChildren(...(d.customers.length ? d.customers.map((c) => {
+    const tr = document.createElement('tr'); tr.className = 'clickable';
+    const use = document.createElement('td'); const box = document.createElement('div'); box.className = 'usage';
+    const t = document.createElement('span'); t.textContent = `${fmtBytes(c.usedBytes)} / ${c.quotaBytes ? fmtBytes(c.quotaBytes) : '不包含'}`; box.append(t, bar(c.usedBytes, c.quotaBytes)); use.append(box);
+    const plan = cell(c.planName); if (c.disabled) { const p = document.createElement('span'); p.className = 'pill bad'; p.textContent = '已停用'; plan.append(' ', p); }
+    const open = document.createElement('td'); const btn = document.createElement('button'); btn.className = 'link'; btn.textContent = '查看'; open.append(btn);
+    tr.append(cell(c.username), plan, use, cell(String(c.restorePoints), 'num'), cell(String(c.chatSegments), 'num'), cell(fmtTime(c.lastBackup)), open);
+    tr.addEventListener('click', () => openCloud(c.id));
+    return tr;
+  }) : [emptyRow(7, '还没有客户使用云备份（Business / Enterprise 配套的客户才会出现在这里）')]));
+}
+$('cloud-refresh').addEventListener('click', () => drawCloud().catch((err) => alert(err.message)));
+let cloudId = null;
+async function openCloud(id) {
+  cloudId = id; const d = await api(`/cloud/${id}`);
+  $('cloud-title').textContent = `${d.username} · 云备份`;
+  $('cloud-summary').replaceChildren(
+    usageStat(`${fmtBytes(d.usedBytes)} / ${d.quotaBytes ? fmtBytes(d.quotaBytes) : '不包含'}`, `已用空间 · ${d.planName}`, d.usedBytes, d.quotaBytes),
+    stat(String(d.snapshots.length), '恢复点'),
+    stat(String(d.chat.n), `云端聊天段 · ${fmtBytes(d.chat.bytes)}`),
+    stat(fmtTime(Math.max(d.chat.last || 0, d.snapshots[0]?.created || 0) || null), '最近备份'));
+  $('cloud-snapshots').tBodies[0].replaceChildren(...(d.snapshots.length ? d.snapshots.map((s) => {
+    const tr = document.createElement('tr'); const act = document.createElement('td'); const b = document.createElement('button'); b.className = 'link danger-link'; b.textContent = '删除';
+    b.addEventListener('click', async () => {
+      if (!confirm(`删除「${s.label}」在 ${fmtTime(s.created)} 的恢复点？客户电脑上的资料不受影响。`)) return;
+      try { const r = await api(`/cloud/${id}/snapshots/${s.id}`, { method: 'DELETE' }); $('cloud-status').textContent = r.cleanError ? `已删除恢复点；空间暂时没有清理（${r.cleanError}），稍后可点“清理未使用的空间”` : `已删除，释放 ${r.removed} 个未使用的分块`; await openCloud(id); await drawCloud(); }
+      catch (err) { $('cloud-status').textContent = err.message; }
+    });
+    act.append(b); tr.append(cell(s.label), cell(fmtTime(s.created)), cell(fmtBytes(s.bytes), 'num'), act); return tr;
+  }) : [emptyRow(4, '没有恢复点')]));
+  if (!$('cloud-dialog').open) { $('cloud-status').textContent = ''; $('cloud-dialog').showModal(); }
+}
+$('cloud-close').addEventListener('click', () => { $('cloud-dialog').close(); cloudId = null; });
+$('cloud-clean').addEventListener('click', async () => {
+  $('cloud-clean').disabled = true; $('cloud-status').textContent = '正在清理…';
+  try { const r = await api(`/cloud/${cloudId}/cleanup`, { method: 'POST' }); $('cloud-status').textContent = r.removed ? `已清理 ${r.removed} 个未使用的分块` : '没有可清理的空间（一天内上传的内容会先保留）'; await openCloud(cloudId); await drawCloud(); }
+  catch (err) { $('cloud-status').textContent = err.message; }
+  $('cloud-clean').disabled = false;
+});
 
 // ---------- Software updates ----------
 const fmtSize = (n) => (n / 1048576).toFixed(1) + ' MB';

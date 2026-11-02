@@ -132,6 +132,21 @@ async function adminApi(req, res, url) {
     if (m[2] === 'devices' && req.method === 'DELETE') { store.removeDevice(id, url.searchParams.get('device') || ''); return send(res, 200, { ok: true }); }
   }
   if (p === '/plans' && req.method === 'PUT') { const b = await json(req); return send(res, 200, { ok: true, data: store.savePlan(b) }); }
+  // Cloud backup (R2): total space and this month's requests, each customer's space and restore points
+  if (p === '/cloud' && req.method === 'GET') return send(res, 200, { ok: true, data: cloudOverview() });
+  const c = /^\/cloud\/(\d+)(?:\/(cleanup|snapshots\/([a-f0-9-]{36})))?$/.exec(p);
+  if (c) {
+    const user = store.userById(Number(c[1]), false);
+    if (!user) return fail(res, 404, '客户不存在');
+    if (!c[2] && req.method === 'GET') return send(res, 200, { ok: true, data: cloudCustomer(user) });
+    if (c[2] === 'cleanup' && req.method === 'POST') return send(res, 200, { ok: true, data: await cloudBackup.clean(user) });
+    // Deleting a restore point frees its space once nothing else uses the same pieces (and they are a day old)
+    // (the restore point is gone even when that clean-up cannot reach R2 right now; it can be run again later)
+    if (c[3] && req.method === 'DELETE') {
+      store.db.prepare('DELETE FROM cloud_snapshots WHERE user_id = ? AND id = ?').run(user.id, c[3]);
+      try { return send(res, 200, { ok: true, data: await cloudBackup.clean(user) }); } catch (e) { return send(res, 200, { ok: true, data: { removed: 0, cleanError: e.message } }); }
+    }
+  }
   if (p === '/settings' && req.method === 'PUT') {
     const b = await json(req); const mult = Number(b.multiplier);
     if (!(mult > 0 && mult <= 100)) return fail(res, 400, '倍率需在 0–100 之间');
@@ -148,6 +163,30 @@ async function adminApi(req, res, url) {
     return send(res, 200, { ok: true }, { 'set-cookie': cookie('', 0) });
   }
   return fail(res, 404, '没有这个接口');
+}
+
+// The admin page's cloud backup view. Same limits as the cloud service (R2_* settings, else the trial protection).
+const envLimit = (name, fallback) => { const n = Number(process.env[name]); return Number.isSafeInteger(n) && n > 0 ? n : fallback; };
+function cloudOverview() {
+  const db = store.db, month = new Date().toISOString().slice(0, 7);
+  const ops = Object.fromEntries(db.prepare('SELECT kind, count FROM cloud_operations WHERE month = ?').all(month).map((r) => [r.kind, r.count]));
+  const by = (sql) => new Map(db.prepare(sql).all().map((r) => [r.user_id, r]));
+  const used = by('SELECT user_id, SUM(size) AS bytes FROM (SELECT user_id, size FROM cloud_chunks UNION ALL SELECT user_id, size FROM cloud_manifests) GROUP BY user_id');
+  const points = by('SELECT user_id, COUNT(*) AS n, MAX(created) AS last FROM cloud_snapshots GROUP BY user_id');
+  const chat = by('SELECT user_id, COUNT(*) AS n, MAX(created) AS last FROM cloud_primary_points GROUP BY user_id');
+  const customers = db.prepare('SELECT id, username, plan, disabled FROM users ORDER BY username').all().map((u) => ({
+    id: u.id, username: u.username, plan: u.plan, planName: store.plan(u.plan)?.name || u.plan, disabled: !!u.disabled, quotaBytes: cloudBackup.quota(u),
+    usedBytes: used.get(u.id)?.bytes || 0, restorePoints: points.get(u.id)?.n || 0, chatSegments: chat.get(u.id)?.n || 0,
+    lastBackup: Math.max(points.get(u.id)?.last || 0, chat.get(u.id)?.last || 0) || null,
+  })).filter((u) => u.quotaBytes > 0 || u.usedBytes > 0);
+  const shared = cloudBackup.state({ id: -1, plan: 'enterprise' });
+  return { configured: shared.configured, trial: shared.trial, sharedLimitBytes: shared.sharedLimitBytes, sharedUsedBytes: shared.sharedUsedBytes,
+    ops: { month, A: ops.A || 0, B: ops.B || 0, limitA: envLimit('R2_MONTHLY_A_LIMIT', 800000), limitB: envLimit('R2_MONTHLY_B_LIMIT', 8000000) }, customers };
+}
+function cloudCustomer(user) {
+  const s = cloudBackup.state(user);
+  const chat = store.db.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(bytes), 0) AS bytes, MAX(created) AS last FROM cloud_primary_points WHERE user_id = ?').get(user.id);
+  return { username: user.username, planName: store.plan(user.plan)?.name || user.plan, quotaBytes: s.quotaBytes, usedBytes: s.usedBytes, snapshots: s.snapshots, chat };
 }
 
 const STATIC = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
