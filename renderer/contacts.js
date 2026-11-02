@@ -33,6 +33,7 @@ async function loadContacts() {
 
 const saveContacts = () => window.api.storeSet('contacts', contacts);
 const saveAccountContacts = () => window.api.storeSet('account-contacts', accountContacts);
+window.api.onBusinessChanged?.(files => { if (files.some(n => ['contacts.json','account-contacts.json'].includes(n))) loadContacts().catch(e => toast(e.message, true)); });
 window.rebindRestoredContacts = () => {
   const rebound = window.ContactRestore.rebind(accountContacts, accounts);
   if (!rebound.changed) return;
@@ -137,6 +138,9 @@ function contactRows() {
       if (row) row.from.push(acc.name);
       else byKey.set(key, { key, name: c.name, sub: contactLabel(p, c), from: [acc.name], data: c });
     }
+  }
+  if (ctAccount === 'all') for (const [id, cache] of Object.entries(accountContacts)) if (!accounts.some(a => a.id === id) && cache.identity?.platform === p) for (const c of cache.list || []) {
+    const key = contactKey(p, c); if (key && !byKey.has(key)) byKey.set(key, { key, name: c.name, sub: contactLabel(p, c), from: [cache.identity.name || cache.identity.phone || cache.identity.username || '云端'], data: c });
   }
   return [...byKey.values()].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 }

@@ -588,16 +588,16 @@ function initializeServices() {
 let cloudRestoreError = '';
 try { require('./cloud-data').applyPending(app.getPath('userData'), license.limits()?.accounts ?? 0, license.state().profile?.username || ''); }
 catch (e) { cloudRestoreError = e.message; }
-registerAI({ app, ipcMain, dialog, getWindow: () => win, getKey: () => claudeAccess().apiKey, getBaseURL: () => claudeAccess().baseURL, getLimits: () => license.limits(), loadAccounts, protect: (value) => { if (!safeStorage.isEncryptionAvailable()) throw Error('系统加密尚未就绪，请重新打开软件'); return encodeSecret(value); }, reveal: decodeSecret, getTranscription: () => ({ endpoint: settings.transcriptionEndpoint, model: settings.transcriptionModel, key: decodeSecret(settings.transcriptionKey) }) });
-require('./conversation-notes').registerNotes({ app, ipcMain, getWindow: () => win, loadAccounts });
+const aiService = registerAI({ app, ipcMain, dialog, getWindow: () => win, getKey: () => claudeAccess().apiKey, getBaseURL: () => claudeAccess().baseURL, getLimits: () => license.limits(), loadAccounts, protect: (value) => { if (!safeStorage.isEncryptionAvailable()) throw Error('系统加密尚未就绪，请重新打开软件'); return encodeSecret(value); }, reveal: decodeSecret, getTranscription: () => ({ endpoint: settings.transcriptionEndpoint, model: settings.transcriptionModel, key: decodeSecret(settings.transcriptionKey) }) });
+const notesStore = require('./conversation-notes').registerNotes({ app, ipcMain, getWindow: () => win, loadAccounts });
 require('./conversation-clips').registerClips({ app, ipcMain, shell, getWindow: () => win, loadAccounts, managedGuests });
 const appSystem=require('./app-system').registerAppSystem({app,ipcMain,session,getWindow:()=>win,managedGuests,loadAccounts,clearTranslationCache});
 require('./desktop-notifications').registerDesktopNotifications({app,ipcMain,BrowserWindow,getWindow:()=>win,getPolicy:()=>appSystem.get(),loadAccounts});
 require('./app-assistant').registerAssistant({app,ipcMain,getWindow:()=>win,getKey:()=>claudeAccess().apiKey,getBaseURL:()=>claudeAccess().baseURL,
   getAccount:()=>{const s=license.state();return s.loggedIn?{profile:s.profile,catalog:s.catalog,ownClaudeKey:!!decodeSecret(settings.claudeKey)&&settings.claudeMode!=='points',accountsUsed:loadAccounts().length}:null;}});
 ipcMain.handle('help:guide',async e=>{if(e.sender!==win?.webContents)return{ok:false,error:'无权打开教程'};const error=await shell.openPath(path.join(__dirname,'assets','黑猫SCRM使用教程.pdf'));return error?{ok:false,error}:{ok:true};});
-backupService=require('./backup-main').registerBackup({ app, ipcMain, dialog, shell, getWindow: () => win, loadAccounts, session, managedGuests, net, getCloudOwner:()=>license.loggedIn()&&['business','enterprise'].includes(license.state().profile?.plan)?license.state().profile.username:'' });
-const cloudService = require('./cloud-main').registerCloud({ app, ipcMain, dialog, shell, getWindow: () => win, license, backupService });
+backupService=require('./backup-main').registerBackup({ app, ipcMain, dialog, shell, getWindow: () => win, loadAccounts, session, managedGuests, net, getCloudOwner:()=>license.loggedIn()&&(Number(license.limits()?.cloudBytes)>0||['business','enterprise','test'].includes(license.state().profile?.plan))?license.state().profile.username:'' });
+const cloudService = require('./cloud-main').registerCloud({ app, ipcMain, dialog, shell, getWindow: () => win, license, backupService, aiService, notesStore });
 require('./cloud-reader').registerCloudReader({ app, ipcMain, protocol, dialog, getWindow:()=>win, cloud:cloudService });
 app.whenReady().then(() => { if (cloudRestoreError) dialog.showErrorBox('云备份恢复未完成', cloudRestoreError + '\n原资料已保留，请检查后重新打开软件。'); });
 require('./backup-reader').registerBackupReader({app,ipcMain,protocol,dialog,getWindow:()=>win,getFolder:()=>backupService.state().folder,getCloudFolder:()=>cloudService.downloadedFolder(),getAccounts:loadAccounts,resolveIdentity:backupService.identityFor,removeLive:request=>backupService.removeRecords(request),isBusy:()=>backupService.isBusy()});

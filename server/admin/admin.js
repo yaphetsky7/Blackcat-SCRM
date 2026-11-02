@@ -205,7 +205,7 @@ async function drawCloud() {
     const t = document.createElement('span'); t.textContent = `${fmtBytes(c.usedBytes)} / ${c.quotaBytes ? fmtBytes(c.quotaBytes) : '不包含'}`; box.append(t, bar(c.usedBytes, c.quotaBytes)); use.append(box);
     const plan = cell(c.planName); if (c.disabled) { const p = document.createElement('span'); p.className = 'pill bad'; p.textContent = '已停用'; plan.append(' ', p); }
     const open = document.createElement('td'); const btn = document.createElement('button'); btn.className = 'link'; btn.textContent = '查看'; open.append(btn);
-    tr.append(cell(c.username), plan, use, cell(String(c.restorePoints), 'num'), cell(String(c.chatSegments), 'num'), cell(fmtTime(c.lastBackup)), open);
+    tr.append(cell(c.username), plan, use, cell(String(c.syncItems), 'num'), cell(String(c.chatSegments), 'num'), cell(fmtTime(c.lastBackup)), open);
     tr.addEventListener('click', () => openCloud(c.id));
     return tr;
   }) : [emptyRow(7, '还没有客户使用云备份（Business / Enterprise 配套的客户才会出现在这里）')]));
@@ -217,18 +217,11 @@ async function openCloud(id) {
   $('cloud-title').textContent = `${d.username} · 云备份`;
   $('cloud-summary').replaceChildren(
     usageStat(`${fmtBytes(d.usedBytes)} / ${d.quotaBytes ? fmtBytes(d.quotaBytes) : '不包含'}`, `已用空间 · ${d.planName}`, d.usedBytes, d.quotaBytes),
-    stat(String(d.snapshots.length), '恢复点'),
+    stat(String(d.workspace.reduce((n,r)=>n+r.n,0)), '已同步工作资料'),
     stat(String(d.chat.n), `云端聊天段 · ${fmtBytes(d.chat.bytes)}`),
-    stat(fmtTime(Math.max(d.chat.last || 0, d.snapshots[0]?.created || 0) || null), '最近备份'));
-  $('cloud-snapshots').tBodies[0].replaceChildren(...(d.snapshots.length ? d.snapshots.map((s) => {
-    const tr = document.createElement('tr'); const act = document.createElement('td'); const b = document.createElement('button'); b.className = 'link danger-link'; b.textContent = '删除';
-    b.addEventListener('click', async () => {
-      if (!confirm(`删除「${s.label}」在 ${fmtTime(s.created)} 的恢复点？客户电脑上的资料不受影响。`)) return;
-      try { const r = await api(`/cloud/${id}/snapshots/${s.id}`, { method: 'DELETE' }); $('cloud-status').textContent = r.cleanError ? `已删除恢复点；空间暂时没有清理（${r.cleanError}），稍后可点“清理未使用的空间”` : `已删除，释放 ${r.removed} 个未使用的分块`; await openCloud(id); await drawCloud(); }
-      catch (err) { $('cloud-status').textContent = err.message; }
-    });
-    act.append(b); tr.append(cell(s.label), cell(fmtTime(s.created)), cell(fmtBytes(s.bytes), 'num'), act); return tr;
-  }) : [emptyRow(4, '没有恢复点')]));
+    stat(fmtTime(Math.max(d.syncLast || 0, d.chat.last || 0) || null), '最近备份'));
+  const labels={contact:'我的联系人','account-contact':'账号联系人',group:'文案分组',template:'群发文案',list:'群发名单',knowledge:'AI 知识库',note:'对话备注','ai-config':'AI 回复设置',quick:'快捷回复'};
+  $('cloud-workspace').tBodies[0].replaceChildren(...(d.workspace.length?d.workspace.map(r=>{const tr=document.createElement('tr');tr.append(cell(labels[r.kind]||r.kind),cell(String(r.n),'num'));return tr;}):[emptyRow(2,'等待客户电脑首次同步')]));
   if (!$('cloud-dialog').open) { $('cloud-status').textContent = ''; $('cloud-dialog').showModal(); }
 }
 $('cloud-close').addEventListener('click', () => { $('cloud-dialog').close(); cloudId = null; });

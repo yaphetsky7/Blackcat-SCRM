@@ -59,7 +59,7 @@
         <p id="cloud-note" class="notice" hidden></p>
         <div class="table-wrap">
           <table id="cloud-customers">
-            <thead><tr><th>客户</th><th>配套</th><th>已用 / 额度</th><th class="num">恢复点</th><th class="num">云端聊天段</th><th>最近备份</th><th></th></tr></thead>
+            <thead><tr><th>客户</th><th>配套</th><th>已用 / 额度</th><th class="num">已同步资料</th><th class="num">云端聊天段</th><th>最近同步</th><th></th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -160,9 +160,9 @@
     <div class="detail-head"><h2 id="cloud-title"></h2><button id="cloud-close" class="ghost">关闭</button></div>
     <div id="cloud-summary" class="stats"></div>
     <div class="row"><button id="cloud-clean" class="ghost">清理未使用的空间</button><span id="cloud-status" class="muted"></span></div>
-    <h3>恢复点（每台电脑保留最近 24 个）</h3>
-    <div class="table-wrap"><table id="cloud-snapshots"><thead><tr><th>电脑</th><th>时间</th><th class="num">大小</th><th></th></tr></thead><tbody></tbody></table></div>
-    <p class="muted small">删除恢复点不会删除客户电脑上的资料；与其他恢复点共用的内容会保留，未使用的空间约一天后可被清理。</p>
+    <h3>最新工作资料</h3>
+    <div class="table-wrap"><table id="cloud-workspace"><thead><tr><th>资料类型</th><th class="num">数量</th></tr></thead><tbody></tbody></table></div>
+    <p class="muted small">联系人、群发名单和文案、知识库、备注按项目持续同步。客户电脑升级到 1.18.0 后自动迁移旧资料，无需选择恢复点。</p>
   </dialog>
 
   <script src="admin.js"></script>

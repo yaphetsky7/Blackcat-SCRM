@@ -26,7 +26,8 @@ function createNotesStore(dataDir, now = Date.now) {
     validate({ accountId: request.accountId, chatKey: '__index__' });
     return [...notes.values()].filter(note => note.accountId === request.accountId).map(({ accountId, chatKey, title, updatedAt }) => ({ accountId, chatKey, title, updatedAt }));
   }
-  return { get, set, list };
+  function reload() { const saved = JSON.parse(fs.readFileSync(file, 'utf8')); if (!Array.isArray(saved.notes)) throw Error('备注格式不正确'); notes = new Map(saved.notes.map(n => [key(n.accountId, n.chatKey), n])); loadError = null; }
+  return { get, set, list, reload };
 }
 function registerNotes({ app, ipcMain, getWindow, loadAccounts }) {
   const store = createNotesStore(app.getPath('userData'));

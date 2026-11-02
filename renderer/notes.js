@@ -73,12 +73,12 @@
   async function persist(entry) {
     clearTimeout(entry?.timer); if (!entry?.dirty || !entry.loaded || entry.saving) return;
     const version = entry.version; const request = { accountId: entry.accountId, chatKey: entry.chatKey, title: entry.title, text: entry.text, sessionId, editVersion: version };
-    entry.saving = true; entry.error = ''; if (selected === entry) draw();
+    window.api.cloudEditing?.('notes-save', true); entry.saving = true; entry.error = ''; if (selected === entry) draw();
     try {
       const result = await window.api.noteSet(request); if (!result?.ok) throw Error(result?.error || t('备注未保存，请重试'));
       entry.updatedAt = result.data.updatedAt; if (entry.version === version) entry.dirty = false;
     } catch (e) { entry.error = e.message; }
-    finally { entry.saving = false; if (selected === entry) draw(); if (entry.dirty && !entry.error) persist(entry); }
+    finally { entry.saving = false; window.api.cloudEditing?.('notes-save', false); if (selected === entry) draw(); if (entry.dirty && !entry.error) persist(entry); }
   }
   async function refreshAccount() {
     const acc = findAcc(activeId()); const context = acc && contexts.get(acc.id); const key = context?.key && !context.ambiguous ? keyOf(acc.id, context.key) : null;
@@ -112,6 +112,11 @@
     }
   });
   window.addEventListener('blackcat:preferences', draw);
+  window.api.onBusinessChanged?.(files => {
+    if (!files.includes('conversation-notes.json')) return;
+    for (const [key, entry] of entries) if (!entry.dirty && !entry.saving) { if (selected === entry) selected = null; entries.delete(key); }
+    refreshAccount();
+  });
   function pause(accountId,hint){if(selected?.accountId===accountId&&selected.dirty)persist(selected);clearTimeout(transitions.get(accountId)?.timer);const old=contexts.get(accountId);const transition={oldKey:old?.key,expectedKey:hint?.key,title:hint?.title||old?.title||''};transition.timer=setTimeout(()=>{if(transitions.get(accountId)!==transition)return;transitions.delete(accountId);contexts.delete(accountId);if(accountId===activeId()){selected=null;++requestEpoch;draw();}},4000);transitions.set(accountId,transition);if(accountId===activeId())draw();}
   window.conversationNotes = { saveClip, flush:async(accountId,chatKey)=>{const entry=entries.get(keyOf(accountId,chatKey));if(!entry)return;for(let i=0;i<150&&entry.saving;i++)await new Promise(r=>setTimeout(r,20));if(entry.dirty)await persist(entry);for(let i=0;i<150&&entry.saving;i++)await new Promise(r=>setTimeout(r,20));if(entry.dirty||entry.error)throw Error('当前备注尚未保存，请先处理保存错误');},reload:async(accountId,chatKey)=>{const key=keyOf(accountId,chatKey),entry=entries.get(key);if(entry?.dirty||entry?.saving)throw Error('此备注还有未保存的编辑，请先等待保存完成');if(entry)versions.set(key,entry.version);entries.delete(key);if(selected?.key===key){selected=null;await refreshAccount();const loaded=entries.get(key);if(loaded)loaded.version=Math.max(loaded.version,entry?.version||0);}},setContext, refreshAccount, pause, getState: () => selected && ({ accountId: selected.accountId, chatKey: selected.chatKey, title:selected.title,text: selected.text, dirty: selected.dirty, saving: selected.saving,switching:transitions.has(selected.accountId) }) };
   window.addEventListener('DOMContentLoaded', refreshAccount);

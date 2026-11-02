@@ -29,6 +29,7 @@ function createCloudBackup({ store, storage = createR2(), env = process.env }) {
   const key = (user, h) => 'v1/' + user.id + '/' + h;
   const busy = new Set();
   const archive = require('./cloud-archive').createCloudArchive({ db, getChunk: (user, h) => get(user, h) });
+  const sync = require('./cloud-sync').createBusinessSync({ db, get, put, requirePlan });
   async function put(user, h, bytes) {
     requirePlan(user);
     if (!isHash(h) || !bytes.length || bytes.length > CHUNK || hash(bytes) !== h) throw Error('备份分块校验失败');
@@ -88,7 +89,7 @@ function createCloudBackup({ store, storage = createR2(), env = process.env }) {
   }
   async function clean(user) {
     run("DELETE FROM cloud_primary_points WHERE user_id=? AND status='pending' AND created<? AND id NOT IN(SELECT point FROM cloud_archive_messages WHERE user_id=? UNION SELECT point FROM cloud_archive_assets WHERE user_id=?)", user.id, Date.now() - 864e5, user.id, user.id);
-    const refs = new Set();
+    const refs = sync.references(user);
     for (const row of db.prepare('SELECT manifest FROM cloud_snapshots WHERE user_id=?').all(user.id)) for (const f of JSON.parse(row.manifest).files) for (const c of f.chunks) refs.add(c.hash);
     for (const row of db.prepare('SELECT manifest FROM cloud_primary_points WHERE user_id=?').all(user.id)) for (const f of JSON.parse(row.manifest).files) for (const c of f.chunks) refs.add(c.hash);
     let removed = 0;
@@ -108,6 +109,10 @@ function createCloudBackup({ store, storage = createR2(), env = process.env }) {
   }
   async function route(req, res, url, found, { json, readBody, send }) {
     const user = found.user, suffix = url.pathname.slice('/api/cloud/'.length);
+    if (suffix === 'sync/prepare' && req.method === 'POST') return send(res, 200, { ok: true, data: await sync.importLegacy(user) });
+    if (suffix === 'sync/exchange' && req.method === 'POST') return send(res, 200, { ok: true, data: sync.exchange(user, await json(req, 8e6)) });
+    if (suffix === 'sync/status' && req.method === 'GET') { requirePlan(user); return send(res, 200, { ok: true, data: sync.status(user) }); }
+    if (suffix === 'archive/accounts-active' && req.method === 'POST') { requirePlan(user); const r = await json(req, 2e6); if (!Array.isArray(r.accounts) || r.accounts.length > 10000) throw Error('账号列表不正确'); return send(res, 200, { ok: true, data: archive.reactivate(user, found.session.device_id, r.accounts) }); }
     if (suffix === 'state' && req.method === 'GET') return send(res, 200, { ok: true, data: state(user) });
     if (suffix === 'missing' && req.method === 'POST') { requirePlan(user); const body = await json(req, 2e6); if (!Array.isArray(body.hashes) || body.hashes.length > 10000 || body.hashes.some(h => !isHash(h))) throw Error('分块列表不正确'); return send(res, 200, { ok: true, data: body.hashes.filter(h => !one("SELECT 1 FROM cloud_chunks WHERE user_id=? AND hash=? AND status='ready'", user.id, h)) }); }
     if (suffix.startsWith('chunks/') && req.method === 'PUT') return send(res, 200, { ok: true, data: await put(user, suffix.slice(7), await readBody(req, CHUNK)) });
@@ -124,7 +129,7 @@ function createCloudBackup({ store, storage = createR2(), env = process.env }) {
     if (suffix === 'archive/asset' && req.method === 'GET') return send(res, 200, { ok: true, data: archive.asset(user, url.searchParams.get('id') || '') });
     if (suffix === 'archive/recent' && req.method === 'POST') { const r = await json(req), id = archive.alias(user, found.session.device_id, String(r.accountId)), data = id ? archive.messages(user, { accountId: id, chatKey: r.chatKey }) : { messages: [] }, skip = new Set(r.skip || []); return send(res, 200, { ok: true, data: { messages: data.messages.filter(m => !skip.has(m.id)).slice(-Math.min(80, Math.max(1, Number(r.limit) || 30))) } }); }
     if (suffix === 'archive/delete' && req.method === 'POST') return send(res, 200, { ok: true, data: archive.remove(user, await json(req)) });
-    if (suffix === 'archive/account-deleted' && req.method === 'POST') { const r = await json(req), id = archive.alias(user, found.session.device_id, String(r.localId)); if (id) archive.markDeleted(user, id); return send(res, 200, { ok: true, data: { saved: true } }); }
+    if (suffix === 'archive/account-deleted' && req.method === 'POST') { const r = await json(req), a = r.account, phone = String(a?.me?.phone || '').replace(/\D/g, ''), username = String(a?.me?.username || '').replace(/^@/, '').toLowerCase(), id = archive.alias(user, found.session.device_id, String(r.localId)) || (phone || username ? one("SELECT id FROM cloud_archive_accounts WHERE user_id=? AND platform=? AND ((phone!='' AND phone=?) OR (username!='' AND lower(username)=?))", user.id, String(a?.platform || ''), phone, username)?.id : null); if (id) archive.markDeleted(user, id); return send(res, 200, { ok: true, data: { saved: true } }); }
     if (/^snapshots\/[a-f0-9-]{36}$/.test(suffix)) { const id = suffix.slice(10), row = getSnapshot(user, id); if (req.method === 'GET') return send(res, 200, { ok: true, data: row }); if (req.method === 'DELETE') { run('DELETE FROM cloud_snapshots WHERE user_id=? AND id=?', user.id, id); return send(res, 200, { ok: true, data: { deleted: true } }); } }
     if (suffix === 'cleanup' && req.method === 'POST') return send(res, 200, { ok: true, data: await clean(user) });
     throw Object.assign(Error('没有这个云备份接口'), { status: 404 });

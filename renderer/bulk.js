@@ -43,10 +43,18 @@ async function loadBulk() {
 let saveTimer = null;
 function saveBulk(now = false) {
   clearTimeout(saveTimer);
-  const write = () => window.api.storeSet('bulk', bulk);
+  window.api.cloudEditing?.('bulk-save', true);
+  const write = () => window.api.storeSet('bulk', bulk).finally(() => window.api.cloudEditing?.('bulk-save', false));
   if (now) write();
   else saveTimer = setTimeout(write, 1000);
 }
+window.api.onBusinessChanged?.(async files => {
+  if (!files.includes('bulk.json')) return;
+  const d = await window.api.storeGet('bulk'); if (!d) return;
+  // Live tasks and open task editors remain local and are never restarted by sync.
+  bulk.templates = withTemplateGroups(d.templates); bulk.lists = d.lists || [];
+  if (sideTab === 'bulk' && ['templates','lists','tasks'].includes(bkView)) renderBulkPanel();
+});
 
 // ---------- 小工具 ----------
 

@@ -3,9 +3,12 @@ const { createAIService } = require('./ai-service');
 function registerAI({ app, ipcMain, dialog, getWindow, getKey, getBaseURL, getLimits, loadAccounts, protect, reveal, getTranscription }) {
   const { extractMedia } = require('./media-source');
   const service = createAIService({ dataDir: app.getPath('userData'), getKey, getBaseURL, protect, reveal, getTranscription, extractMedia, notify: () => { const win = getWindow(); if (win && !win.isDestroyed()) win.webContents.send('ai:changed'); } });
+  let syncRequests = 0;
   const handle = (channel, fn) => ipcMain.handle(channel, async (event, request = {}) => {
     if (event.sender !== getWindow()?.webContents) return { ok: false, error: '无权访问 AI 设置' };
+    if (channel !== 'ai:state') syncRequests++;
     try { return { ok: true, data: await fn(request) }; } catch (error) { return { ok: false, error: error.message }; }
+    finally { if (channel !== 'ai:state') syncRequests--; }
   });
   const accountExists = (accountId) => { if (!loadAccounts().some((a) => a.id === accountId)) throw new Error('账号不存在'); };
   handle('ai:state', () => service.publicState());
@@ -31,6 +34,6 @@ function registerAI({ app, ipcMain, dialog, getWindow, getKey, getBaseURL, getLi
   handle('ai:finish', ({ id, ok, error }) => service.finish(id, ok === true, error));
   handle('ai:discard', ({ id, reason }) => service.discard(id, reason));
   handle('ai:resolve', ({ accountId, chatKey }) => { accountExists(accountId); return service.resolveHandoff(accountId, chatKey); });
-  return service;
+  return { ...service, syncBusy: () => syncRequests > 0 || service.syncBusy() };
 }
 module.exports = { registerAI };

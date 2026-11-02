@@ -357,7 +357,8 @@ function createAIService({ dataDir, getKey, getBaseURL = () => undefined, client
     for (const job of state.jobs) if (job.accountId === accountId && job.chatKey === chatKey && ['handoff', 'error', 'uncertain'].includes(job.status)) { job.status = 'resolved'; job.resolvedAt = now(); if (job.key && state.handled[job.key]) state.handled[job.key].status = 'resolved'; }
     save();
   }
-  return { publicState, createBase, renameBase, removeBase, importFiles, addSource, refreshSource, removeDocument, learn, configure, refineGuide, clearGuideChat, generate, authorizeSend, finish, discard, resolveHandoff, accountConfig };
+  function reloadCloud() { if (studying.size || generating.size || guideRequests.size) throw Error('AI 正在处理，请稍后同步'); const incoming = JSON.parse(fs.readFileSync(file, 'utf8')); state.bases = incoming.bases || []; state.accounts = incoming.accounts || {}; notify(); }
+  return { publicState, createBase, renameBase, removeBase, importFiles, addSource, refreshSource, removeDocument, learn, configure, refineGuide, clearGuideChat, generate, authorizeSend, finish, discard, resolveHandoff, accountConfig, reloadCloud, syncBusy: () => !!(studying.size || generating.size || guideRequests.size) };
 }
 module.exports = { createAIService, MODEL, STUDY_MODEL, tokens };
 

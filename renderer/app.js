@@ -1425,3 +1425,5 @@ window.addEventListener('blackcat:preferences', () => {
   loadAllViews();
   updateViewActivity();
 });
+
+window.api.onBusinessChanged?.(async files => {if(!files.includes("quick-replies.json"))return;quick={mode:"direct",public:[],personal:{},...(await window.api.quickLoad())};quick.public=withGroups(quick.public);if(sideTab==="quick")renderQuick();});

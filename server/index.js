@@ -174,10 +174,12 @@ function cloudOverview() {
   const used = by('SELECT user_id, SUM(size) AS bytes FROM (SELECT user_id, size FROM cloud_chunks UNION ALL SELECT user_id, size FROM cloud_manifests) GROUP BY user_id');
   const points = by('SELECT user_id, COUNT(*) AS n, MAX(created) AS last FROM cloud_snapshots GROUP BY user_id');
   const chat = by('SELECT user_id, COUNT(*) AS n, MAX(created) AS last FROM cloud_primary_points GROUP BY user_id');
+  const synced = by('SELECT user_id, COUNT(*) AS n FROM cloud_sync_records WHERE deleted=0 GROUP BY user_id');
+  const lastSync = by('SELECT user_id,updated_at AS last FROM cloud_sync_clock');
   const customers = db.prepare('SELECT id, username, plan, disabled FROM users ORDER BY username').all().map((u) => ({
     id: u.id, username: u.username, plan: u.plan, planName: store.plan(u.plan)?.name || u.plan, disabled: !!u.disabled, quotaBytes: cloudBackup.quota(u),
-    usedBytes: used.get(u.id)?.bytes || 0, restorePoints: points.get(u.id)?.n || 0, chatSegments: chat.get(u.id)?.n || 0,
-    lastBackup: Math.max(points.get(u.id)?.last || 0, chat.get(u.id)?.last || 0) || null,
+    usedBytes: used.get(u.id)?.bytes || 0, syncItems: synced.get(u.id)?.n || 0, restorePoints: points.get(u.id)?.n || 0, chatSegments: chat.get(u.id)?.n || 0,
+    lastBackup: Math.max(lastSync.get(u.id)?.last || 0, points.get(u.id)?.last || 0, chat.get(u.id)?.last || 0) || null,
   })).filter((u) => u.quotaBytes > 0 || u.usedBytes > 0);
   const shared = cloudBackup.state({ id: -1, plan: 'enterprise' });
   return { configured: shared.configured, trial: shared.trial, sharedLimitBytes: shared.sharedLimitBytes, sharedUsedBytes: shared.sharedUsedBytes,
@@ -186,7 +188,9 @@ function cloudOverview() {
 function cloudCustomer(user) {
   const s = cloudBackup.state(user);
   const chat = store.db.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(bytes), 0) AS bytes, MAX(created) AS last FROM cloud_primary_points WHERE user_id = ?').get(user.id);
-  return { username: user.username, planName: store.plan(user.plan)?.name || user.plan, quotaBytes: s.quotaBytes, usedBytes: s.usedBytes, snapshots: s.snapshots, chat };
+  const workspace = store.db.prepare("SELECT substr(key,1,instr(key,':')-1) AS kind,COUNT(*) AS n FROM cloud_sync_records WHERE user_id=? AND deleted=0 GROUP BY kind").all(user.id);
+  const syncLast = store.db.prepare('SELECT updated_at AS last FROM cloud_sync_clock WHERE user_id=?').get(user.id)?.last || 0;
+  return { username: user.username, planName: store.plan(user.plan)?.name || user.plan, quotaBytes: s.quotaBytes, usedBytes: s.usedBytes, workspace, syncLast, snapshots: s.snapshots, chat };
 }
 
 const STATIC = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };

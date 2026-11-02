@@ -2,11 +2,11 @@
 const fs = require('fs'), path = require('path'), os = require('os'), crypto = require('crypto');
 const { Worker } = require('worker_threads');
 const { atomic, read } = require('./cloud-data');
-function registerCloud({ app, ipcMain, dialog, shell, getWindow, license, backupService }) {
+function registerCloud({ app, ipcMain, dialog, shell, getWindow, license, backupService, aiService, notesStore }) {
   const dataDir = app.getPath('userData'), settingsFile = path.join(dataDir, 'cloud-settings.json');
   let settings = read(settingsFile, {}), current = null;
   const owner = () => license.state().profile?.username || '';
-  const primaryPlan = () => ['business','enterprise'].includes(license.state().profile?.plan);
+  const primaryPlan = () => Number(license.limits()?.cloudBytes) > 0 || ['business','enterprise','test'].includes(license.state().profile?.plan);
   const config = () => ({ automatic: primaryPlan(), archiveEnabled: true, lastRun: 0, lastError: '', ...(settings[owner()] || {}) });
   const save = value => { settings[owner()] = { ...config(), ...value }; atomic(settingsFile, settings); };
   const notify = () => { const w = getWindow(); if (w && !w.isDestroyed()) w.webContents.send('cloud:changed', { running: !!current, progress: current?.progress || '', action: current?.action || '' }); };
@@ -16,12 +16,32 @@ function registerCloud({ app, ipcMain, dialog, shell, getWindow, license, backup
     return { ...c, version: app.getVersion() };
   };
   async function request(route, method = 'GET', body, binary = false, signal) {
-    const expectedOwner = owner(), c = connection(), res = await fetch(c.server + '/api/cloud/' + route, { method, redirect: 'error', headers: { authorization: 'Bearer ' + c.token, 'x-blackcat-version': c.version, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body), signal: signal || AbortSignal.timeout(120000) });
+    const expectedOwner = owner(), c = connection(), res = await fetch(c.server + '/api/cloud/' + route, { method, redirect: 'error', headers: { authorization: 'Bearer ' + c.token, 'x-blackcat-version': c.version, 'content-type': Buffer.isBuffer(body) ? 'application/octet-stream' : 'application/json' }, body: body === undefined ? undefined : Buffer.isBuffer(body) ? body : JSON.stringify(body), signal: signal || AbortSignal.timeout(120000) });
     if (owner() !== expectedOwner) { await res.body?.cancel(); throw Error('黑猫账号已改变，请重新操作'); }
     if (binary && res.ok) return Buffer.from(await res.arrayBuffer());
     const result = await res.json(); if (!res.ok || !result.ok) throw Error(result.error || '云备份请求失败'); return result.data;
   }
-  async function state() { const pending = read(path.join(dataDir, 'cloud-pending-restore.json'), null), report = read(path.join(dataDir, 'cloud-restore-report.json'), null), b = backupService.state(); return { ...await request('state'), ...config(), lastRestore: report?.owner === owner() ? report : null, cloudPrimary: b.storageMode === 'cloud', pendingMessages: b.storageMode === 'cloud' ? b.counts.messages : 0, captureEnabled: b.enabled, scanRunning: !!b.running, scanProgress: b.running?.progress || '', pendingRestore: pending?.owner === owner(), running: !!current, progress: current?.progress || '' }; }
+  async function state() { const b = backupService.state(); return { ...await request('state'), ...config(), businessSync: businessClient?.owner === owner() ? businessClient.client.status() : {}, cloudPrimary: b.storageMode === 'cloud', pendingMessages: b.storageMode === 'cloud' ? b.counts.messages : 0, captureEnabled: b.enabled, scanRunning: !!b.running, scanProgress: b.running?.progress || '', running: !!current, progress: current?.progress || '' }; }
+  let businessClient = null, businessAttempt = 0;
+  const edits = new Map();
+  ipcMain.on('cloud:editing', (e, { key, busy } = {}) => { if (e.sender !== getWindow()?.webContents || typeof key !== 'string') return; if (busy) edits.set(key, Date.now()); else edits.delete(key); });
+  async function syncBusiness() {
+    if (!primaryPlan() || !owner()) throw Error('云同步需要 Business 或 Enterprise 配套');
+    const user = owner();
+    const bindingFile = path.join(dataDir, 'cloud-data-owner.json'), binding = read(bindingFile, null);
+    if (binding && binding.owner !== user) throw Error('这台电脑的客户资料属于另一个黑猫账号，请使用原账号同步，避免资料混入其他账号');
+    if (!binding) atomic(bindingFile, { owner: user });
+    if (!businessClient || businessClient.owner !== user) {
+      const device = read(path.join(dataDir, 'license.json'), {}).deviceId || os.hostname();
+      const client = require('./cloud-sync-client').createSyncClient({ dataDir, owner: user, device,
+        request: (...args) => { if (owner() !== user || !primaryPlan()) throw Error('黑猫账号已改变，已暂停同步'); return request(...args); },
+        canApply: () => owner() === user && primaryPlan() && !aiService?.syncBusy?.() && ![...edits.values()].some(at => Date.now() - at < 120000),
+        onApplied: files => { if (files.includes('ai-knowledge.json')) aiService?.reloadCloud?.(); if (files.includes('conversation-notes.json')) notesStore?.reload?.(); const w = getWindow(); if (w && !w.isDestroyed()) w.webContents.send('cloud:business-changed', files); }
+      }); businessClient = { owner: user, client };
+    }
+    await reconcileAccounts();
+    try { const result = await businessClient.client.cycle(); save({ businessError: '' }); return result; } finally { notify(); }
+  }
   function start(job) {
     if (current) throw Error('已有云备份任务正在运行');
     if (fs.existsSync(path.join(dataDir, 'cloud-pending-restore.json'))) throw Error('有下载完成的恢复点等待导入，请先重新打开软件');
@@ -55,7 +75,8 @@ function registerCloud({ app, ipcMain, dialog, shell, getWindow, license, backup
   const handle = (name, fn) => ipcMain.handle('cloud:' + name, async (e, r = {}) => { try { guard(e); return { ok: true, data: await fn(r) }; } catch (error) { return { ok: false, error: error.message }; } });
   handle('state', state);
   handle('configure', async r => { const s = await request('state'); if (!s.eligible) throw Error('云备份需要 Business 或 Enterprise 配套'); save({ automatic: r.automatic === true }); return state(); });
-  handle('upload', upload);
+  handle('upload', syncBusiness);
+  handle('business-sync', syncBusiness);
   function syncPrimary(force = false) {
     if (current) throw Error('已有云端任务正在运行');
     const user = owner(); if (!primaryPlan() || !user) throw Error('云端聊天保存需要 Business 或 Enterprise 配套');
@@ -89,20 +110,37 @@ function registerCloud({ app, ipcMain, dialog, shell, getWindow, license, backup
   const clock = setInterval(async () => {
     if (!license.loggedIn() || current) return;
     backupService.state();
+    if (primaryPlan() && config().automatic !== false && Date.now() - businessAttempt > 15000) {
+      businessAttempt = Date.now(); try { await syncBusiness(); } catch (e) { save({ businessError: e.message }); notify(); }
+    }
     if (primaryPlan() && config().archiveEnabled !== false && Date.now() - (config().primaryAttempt || 0) > 60000) {
       save({ primaryAttempt: Date.now() });
       try { const service = await request('state'); if (service.configured) { const started = syncPrimary(); if (started.started) return; } }
       catch (e) { save({ primaryError: e.message }); notify(); }
     }
-    if (current || !config().automatic || Date.now() - (config().lastAttempt || config().lastRun || 0) < 3600000) return;
-    // Retry once an hour; offline/full/not-configured errors never create a busy loop.
-    const user = owner(); save({ lastAttempt: Date.now() });
-    try { const s = await request('state'); if (owner() !== user) return; if (!s.eligible || !s.configured) throw Error(s.eligible ? '管理员尚未接通 R2 云储存' : '当前配套不包含云备份'); upload(); }
-    catch (e) { if (owner() === user) save({ lastError: e.message }); notify(); }
   }, 15000); clock.unref?.();
   backupService.state();
   backupService.setCloudRecent(r => request('archive/recent', 'POST', r));
-  app.on('blackcat:accounts-saved', ({ previous, accounts }) => { if (!primaryPlan()) return; for (const a of previous || []) if (!(accounts || []).some(b => b.id === a.id)) request('archive/account-deleted', 'POST', { localId: a.id }).catch(() => {}); });
+  let accountLifecycle = Promise.resolve();
+  const lifecycleFile = path.join(dataDir, 'cloud-account-events.json'), lifecycle = read(lifecycleFile, {});
+  function reconcileAccounts() {
+    const user = owner();
+    accountLifecycle = accountLifecycle.catch(() => {}).then(async () => {
+      if (owner() !== user || !primaryPlan()) return;
+      for (const [id, event] of Object.entries(lifecycle[user] || {})) {
+        await request('archive/account-deleted', 'POST', { localId: id, account: event.account });
+        if (lifecycle[user]?.[id]?.at === event.at) { delete lifecycle[user][id]; atomic(lifecycleFile, lifecycle); }
+      }
+      await request('archive/accounts-active', 'POST', { accounts: read(path.join(dataDir, 'accounts.json'), []).map(require('./cloud-data').safeAccount) });
+    });
+    return accountLifecycle;
+  }
+  app.on('blackcat:accounts-saved', ({ previous, accounts }) => {
+    if (!primaryPlan()) return;
+    const user = owner(), linkedFile = path.join(dataDir, 'cloud-linked-accounts.json'), linked = read(linkedFile, {});
+    for (const a of previous || []) { const safe = require('./cloud-data').safeAccount(a); if (safe.me.phone || safe.me.username) linked[a.id] = safe; if (!(accounts || []).some(b => b.id === a.id)) { lifecycle[user] ||= {}; lifecycle[user][a.id] = { at: Date.now(), account: safe }; } }
+    atomic(linkedFile, linked); atomic(lifecycleFile, lifecycle); reconcileAccounts().catch(() => {});
+  });
   app.on('before-quit', () => { clearInterval(clock); current?.worker.terminate(); });
   return { state, request, owner, syncPrimary, downloadedFolder: () => config().lastDownload?.folder || '' };
 }

@@ -1,7 +1,7 @@
 {
   "name": "blackcat-crm",
   "productName": "黑猫SCRM",
-  "version": "1.17.1",
+  "version": "1.18.0",
   "description": "黑猫SCRM 多平台聊天与客户管理",
   "main": "main.js",
   "blackcatServer": "https://api.blackcatscrm.com",
@@ -62,7 +62,9 @@
       "cloud-main.js",
       "cloud-outbox.js",
       "cloud-reader.js",
-      "contact-restore.js"
+      "contact-restore.js",
+      "cloud-sync-data.js",
+      "cloud-sync-client.js"
     ],
     "win": {
       "target": [

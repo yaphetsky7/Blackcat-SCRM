@@ -16,9 +16,12 @@ function createCloudArchive({ db, getChunk, importDir = os.tmpdir() }) {
   function accountId(user, device, a) {
     const phone = String(a.me?.phone || a.phone || '').replace(/\D/g, ''), username = String(a.me?.username || a.username || '').replace(/^@/, '');
     const alias = one('SELECT account FROM cloud_archive_aliases WHERE user_id=? AND device=? AND local_id=?', user.id, device, a.id);
-    const matched = phone || username ? one('SELECT id FROM cloud_archive_accounts WHERE user_id=? AND platform=? AND ((phone!=\'\' AND phone=?) OR (username!=\'\' AND lower(username)=lower(?)))', user.id, a.platform, phone, username) : null;
-    const id = alias?.account || matched?.id || crypto.randomUUID();
-    run(`INSERT INTO cloud_archive_accounts VALUES(?,?,?,?,?,?,?) ON CONFLICT(user_id,id) DO UPDATE SET name=excluded.name,phone=CASE WHEN excluded.phone!='' THEN excluded.phone ELSE phone END,username=CASE WHEN excluded.username!='' THEN excluded.username ELSE username END,deleted_at=excluded.deleted_at`, user.id, id, String(a.name || a.id), a.platform, phone, username, Number(a.deletedAt) || 0);
+    const matched = phone || username ? one("SELECT id FROM cloud_archive_accounts WHERE user_id=? AND platform=? AND ((phone!='' AND phone=?) OR (username!='' AND lower(username)=lower(?) AND (?='' OR phone=''))) ORDER BY CASE WHEN phone=? AND phone!='' THEN 0 ELSE 1 END LIMIT 1", user.id, a.platform, phone, username, phone, phone) : null;
+    const prior = alias && one('SELECT * FROM cloud_archive_accounts WHERE user_id=? AND id=?', user.id, alias.account);
+    const compatible = prior && prior.platform === a.platform && (!phone || !prior.phone || phone === prior.phone) && (phone || !username || !prior.username || username.toLowerCase() === prior.username.toLowerCase());
+    const id = matched?.id || (compatible ? alias.account : null) || crypto.randomUUID();
+    // Old chat segments cannot overwrite a newer live account lifecycle decision.
+    run(`INSERT INTO cloud_archive_accounts VALUES(?,?,?,?,?,?,?) ON CONFLICT(user_id,id) DO UPDATE SET name=excluded.name,phone=CASE WHEN excluded.phone!='' THEN excluded.phone ELSE phone END,username=CASE WHEN excluded.username!='' THEN excluded.username ELSE username END`, user.id, id, String(a.name || a.id), a.platform, phone, username, Number(a.deletedAt) || 0);
     run('INSERT OR REPLACE INTO cloud_archive_aliases VALUES(?,?,?,?)', user.id, device, a.id, id);
     return id;
   }
@@ -85,6 +88,30 @@ function createCloudArchive({ db, getChunk, importDir = os.tmpdir() }) {
   function prune(user) {
     run("DELETE FROM cloud_primary_points WHERE user_id=? AND status='ready' AND id NOT IN(SELECT point FROM cloud_archive_messages WHERE user_id=? UNION SELECT point FROM cloud_archive_assets WHERE user_id=?)", user.id, user.id, user.id);
   }
+  function reactivate(user, device, accounts) {
+    let restored = 0;
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      for (const a of accounts) {
+        if (!a || typeof a.id !== 'string' || !['whatsapp','telegram','line','facebook','tiktok','wechat','zalo','x'].includes(a.platform)) continue;
+        const phone = String(a.me?.phone || a.self?.phone || '').replace(/\D/g, ''), username = String(a.me?.username || a.self?.username || '').replace(/^@/, '').toLowerCase();
+        if (!phone && !username) continue;
+        const target = accountId(user, device, { ...a, me: { phone, username } });
+        const duplicates = all("SELECT id FROM cloud_archive_accounts WHERE user_id=? AND platform=? AND id!=? AND ((phone!='' AND phone=?) OR (username!='' AND lower(username)=? AND (?='' OR phone='')))", user.id, a.platform, target, phone, username, phone);
+        for (const duplicate of duplicates) {
+          for (const c of all('SELECT * FROM cloud_archive_chats WHERE user_id=? AND account=?', user.id, duplicate.id)) run('INSERT OR IGNORE INTO cloud_archive_chats VALUES(?,?,?,?,?,?,?)', user.id, target, c.key, c.title, c.phone, c.username, c.coverage);
+          for (const m of all('SELECT * FROM cloud_archive_messages WHERE user_id=? AND account=?', user.id, duplicate.id)) run(`INSERT INTO cloud_archive_messages VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(user_id,account,chat,id) DO UPDATE SET data=CASE WHEN excluded.source_seen>source_seen THEN excluded.data ELSE data END,point=CASE WHEN excluded.source_seen>source_seen THEN excluded.point ELSE point END,source_seen=MAX(source_seen,excluded.source_seen)`, user.id, target, m.chat, m.id, m.data, m.first_seen, m.source_seen, m.point);
+          for (const asset of all('SELECT * FROM cloud_archive_assets WHERE user_id=? AND account=?', user.id, duplicate.id)) { const id = hash(JSON.stringify([target, asset.chat, asset.message, asset.slot])), data = { ...JSON.parse(asset.data), id }; run('INSERT OR IGNORE INTO cloud_archive_assets VALUES(?,?,?,?,?,?,?,?)', user.id, id, target, asset.chat, asset.message, asset.slot, JSON.stringify(data), asset.point); }
+          run('INSERT OR IGNORE INTO cloud_archive_deleted SELECT user_id,?,chat,id FROM cloud_archive_deleted WHERE user_id=? AND account=?', target, user.id, duplicate.id);
+          for (const table of ['cloud_archive_messages','cloud_archive_assets','cloud_archive_chats','cloud_archive_deleted']) run('DELETE FROM ' + table + ' WHERE user_id=? AND account=?', user.id, duplicate.id);
+          run('UPDATE cloud_archive_aliases SET account=? WHERE user_id=? AND account=?', target, user.id, duplicate.id);
+          run('DELETE FROM cloud_archive_accounts WHERE user_id=? AND id=?', user.id, duplicate.id);
+        }
+        run('UPDATE cloud_archive_accounts SET deleted_at=0 WHERE user_id=? AND id=?', user.id, target); restored++;
+      }
+      db.exec('COMMIT'); return { restored };
+    } catch (e) { db.exec('ROLLBACK'); throw e; }
+  }
   function accounts(user) { return all(`SELECT a.*,a.deleted_at AS deletedAt,(SELECT COUNT(*) FROM cloud_archive_chats c WHERE c.user_id=a.user_id AND c.account=a.id) chats,(SELECT COUNT(*) FROM cloud_archive_messages m WHERE m.user_id=a.user_id AND m.account=a.id) messages FROM cloud_archive_accounts a WHERE user_id=? AND EXISTS(SELECT 1 FROM cloud_archive_messages m WHERE m.user_id=a.user_id AND m.account=a.id) ORDER BY name,id`, user.id).map(a => ({ ...a, isDeleted: !!a.deletedAt, identity: a.phone ? '+' + a.phone : a.username ? '@' + a.username : '', ...(a.deletedAt ? { displayName: (a.phone || a.username || a.name) + ' · ' + new Date(a.deletedAt).toISOString() } : {}) })); }
   function listChats(user, account) { return all('SELECT c.*,(SELECT COUNT(*) FROM cloud_archive_messages m WHERE m.user_id=c.user_id AND m.account=c.account AND m.chat=c.key) messages FROM cloud_archive_chats c WHERE user_id=? AND account=? ORDER BY title,key', user.id, account); }
   function messages(user, r) {
@@ -107,6 +134,6 @@ function createCloudArchive({ db, getChunk, importDir = os.tmpdir() }) {
     } catch (e) { db.exec('ROLLBACK'); throw e; }
     prune(user); return { removed: true };
   }
-  return { importPoint, accounts, listChats, messages, asset, remove, markDeleted: (user, id) => run('UPDATE cloud_archive_accounts SET deleted_at=? WHERE user_id=? AND id=?', Date.now(), user.id, id), alias: (user, device, id) => one('SELECT account FROM cloud_archive_aliases WHERE user_id=? AND device=? AND local_id=?', user.id, device, id)?.account };
+  return { importPoint, accounts, listChats, messages, asset, remove, reactivate, markDeleted: (user, id) => run('UPDATE cloud_archive_accounts SET deleted_at=? WHERE user_id=? AND id=?', Date.now(), user.id, id), alias: (user, device, id) => one('SELECT account FROM cloud_archive_aliases WHERE user_id=? AND device=? AND local_id=?', user.id, device, id)?.account };
 }
 module.exports = { createCloudArchive };
