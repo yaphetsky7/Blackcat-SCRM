@@ -42,10 +42,16 @@
   async function run(fn) { if (busy) return; busy = true; draw(); let error; try { await fn(); await refresh(); } catch (e) { error = e.message; } finally { busy = false; draw(); if (error) el('status').textContent = error; } }
   el('upload').onclick = () => run(() => call('business-sync')); el('refresh').onclick = () => run(refresh);
   el('view').onclick = () => run(async () => { const r = await window.api.cloudArchive('open'); if (!r.ok) throw Error(r.error); return window.backupViewer.open(false, r); });
-  el('sync').onclick = () => run(() => call('sync')); el('capture').onchange = () => run(() => call('archive-configure', { enabled: el('capture').checked }));
+  // Read a switch before run() redraws it from the last saved state (which would put the old tick back and save that)
+  const toggle = (id, key, action, payload) => { el(id).onchange = () => {
+    const on = el(id).checked; if (state) state[key] = on;
+    run(async () => { try { await call(action, payload(on)); } catch (e) { await refresh().catch(() => {}); throw e; } });
+  }; };
+  el('sync').onclick = () => run(() => call('sync'));
+  toggle('capture', 'captureEnabled', 'archive-configure', (on) => ({ enabled: on }));
   el('scan').onclick = () => run(async () => { await window.backupController.run(true); const error = window.backupController.getState().error; if (error) throw Error(error); });
   el('scan-stop').onclick = () => document.getElementById('backup-stop').click();
-  el('automatic').onchange = () => run(() => call('configure', { automatic: el('automatic').checked }));
+  toggle('automatic', 'automatic', 'configure', (on) => ({ automatic: on }));
   el('cleanup').onclick = () => run(() => call('cleanup'));
   document.querySelector('[data-settings-tab="cloud"]').addEventListener('click', () => { draw(); run(refresh); });
   const changed = () => { clearTimeout(nextRefresh); nextRefresh = setTimeout(() => { if (!document.getElementById('settings-cloud').hidden) refresh().catch(e => { el('status').textContent = e.message; }); }, 300); };
