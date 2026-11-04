@@ -26,7 +26,7 @@ async function main() {
   const outbox = createArchive(folder, { cloudOutbox: true });
   const first = { chat: { key: 'whatsapp:customer', title: 'Amy', phone: '60111111111' }, messages: [{ id: '1', text: 'Cloud first', direction: 'incoming' }, { id: '2', text: 'Video caption', direction: 'outgoing', assets: [{ kind: 'video', name: 'test.mp4', quality: 'download-link', source: 'fixture-local-bytes' }] }] };
   const wanted = outbox.ingest(account, first); assert.equal(wanted.length, 1);
-  const video = crypto.randomBytes(CHUNK + 80), sink = outbox.startAsset(wanted[0].id); sink.write(video); const saved = sink.finish('video/mp4', 'download-link');
+  const video = crypto.randomBytes(CHUNK + 80);video.writeUInt32BE(24,0);video.write('ftyp',4);video.write('isom',8);const sink = outbox.startAsset(wanted[0].id); sink.write(video); const saved = sink.finish('video/mp4', 'download-link');
   try {
     const result = await worker(dataDir, folder); assert.equal(result.primary, true); assert.equal(result.acknowledged, 2);
     assert.equal(outbox.db.prepare('SELECT COUNT(*) n FROM messages').get().n, 0); assert.equal(outbox.db.prepare('SELECT COUNT(*) n FROM cloud_ack').get().n, 2); assert(!fs.existsSync(path.join(folder, saved.path)));

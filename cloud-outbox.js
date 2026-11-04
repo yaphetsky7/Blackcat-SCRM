@@ -2,8 +2,9 @@
 const fs = require('fs'), path = require('path'), crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
 const digest = value => crypto.createHash('sha256').update(value).digest('hex');
+const {normalizeLinks}=require('./backup-content');
 function messageSignature(m) {
-  return digest(JSON.stringify({ text: String(m.text || ''), direction: m.direction, author: String(m.author || ''), time: String(m.time || ''), reactions: m.reactions || [], ignored: m.ignoredAssetSlots || [], ignoredImages: m.ignoredImageSlots || [], assets: (m.assets || []).map((a, i) => [a.slot ?? i, a.kind, a.name || '', a.quality || '', Number(a.width) || 0, Number(a.height) || 0]) }));
+  const links=normalizeLinks(m.links);return digest(JSON.stringify({ text: String(m.text || ''), ...(links.length?{links}:{}), direction: m.direction, author: String(m.author || ''), time: String(m.time || ''), reactions: m.reactions || [], ignored: m.ignoredAssetSlots || [], ignoredImages: m.ignoredImageSlots || [], assets: (m.assets || []).map((a, i) => [a.slot ?? i, a.kind, a.name || '', a.quality || '', Number(a.width) || 0, Number(a.height) || 0]) }));
 }
 function pending(root) {
   if (!root || !fs.existsSync(path.join(root, 'chat-archive.sqlite'))) return 0;
@@ -27,7 +28,7 @@ async function acknowledge({ root, snapshot, dataDir }) {
         const after = live.prepare('SELECT * FROM assets WHERE account=? AND chat=? AND message=?').all(row.account, row.chat, row.id);
         if (assetsSignature(before) !== assetsSignature(after)) continue;
         live.prepare('INSERT OR REPLACE INTO cloud_ack VALUES(?,?,?,?)').run(row.account, row.chat, row.id, row.cloud_hash);
-        if (before.some(a => !['saved','superseded'].includes(a.status))) {
+        if (before.some(a => !['saved','superseded'].includes(a.status) || a.status==='saved'&&a.quality!=='download-link')) {
           const stub = { ...JSON.parse(row.data), text: '', cloudTextSynced: true };
           live.prepare('UPDATE messages SET data=? WHERE account=? AND chat=? AND id=?').run(JSON.stringify(stub), row.account, row.chat, row.id);
           live.prepare('DELETE FROM revisions WHERE account=? AND chat=? AND id=?').run(row.account, row.chat, row.id);

@@ -19,7 +19,7 @@ function registerCloud({ app, ipcMain, dialog, shell, getWindow, license, backup
     const expectedOwner = owner(), c = connection();
     return require('./cloud-http').cloudRequest({ url: c.server + '/api/cloud/' + route, route, method, headers: { authorization: 'Bearer ' + c.token, 'x-blackcat-version': c.version, 'content-type': Buffer.isBuffer(body) ? 'application/octet-stream' : 'application/json' }, body: body === undefined ? undefined : Buffer.isBuffer(body) ? body : JSON.stringify(body), binary, signal, check: () => { if (owner() !== expectedOwner) throw Error('黑猫账号已改变，请重新操作'); } });
   }
-  async function state() { const b = backupService.state(),remote=await request('state'),local=businessClient?.owner===owner()?businessClient.client.status():{}; return { ...remote, ...config(), businessSync: {...local,cloudCounts:remote.workspace?.counts||local.workspace?.counts||{},migration:remote.workspace?.migration||local.workspace?.migration||{},running:!!businessTask||local.running}, cloudPrimary: b.storageMode === 'cloud', pendingMessages: b.storageMode === 'cloud' ? b.counts.messages : 0, captureEnabled: b.enabled, scanRunning: !!b.running, scanProgress: b.running?.progress || '', running: !!current, progress: current?.progress || '' }; }
+  async function state() { const b = backupService.state(),remote=await request('state'),local=businessClient?.owner===owner()?businessClient.client.status():{}; return { ...remote, ...config(), businessSync: {...local,cloudCounts:remote.workspace?.counts||local.workspace?.counts||{},migration:remote.workspace?.migration||local.workspace?.migration||{},running:!!businessTask||local.running}, cloudPrimary: b.storageMode === 'cloud', pendingMessages: b.storageMode === 'cloud' ? b.counts.messages : 0, pendingTextMessages:b.storageMode==='cloud'?(b.counts.textPending??b.counts.messages):0,pendingOriginalAttachments:b.counts.originalPending??b.counts.pending??0,captureEnabled: b.enabled, scanRunning: !!b.running, scanProgress: b.running?.progress || '', running: !!current, progress: current?.progress || '' }; }
   let businessClient = null, businessAttempt = 0, businessTask = null, businessDelay = 15000;
   const edits = new Map();
   ipcMain.on('cloud:editing', (e, { key, busy } = {}) => { if (e.sender !== getWindow()?.webContents || typeof key !== 'string') return; if (busy) edits.set(key, Date.now()); else edits.delete(key); });
@@ -85,7 +85,7 @@ function registerCloud({ app, ipcMain, dialog, shell, getWindow, license, backup
     if (current) throw Error('已有云端任务正在运行');
     const user = owner(); if (!primaryPlan() || !user) throw Error('云端聊天保存需要 Business 或 Enterprise 配套');
     backupService.useCloud(user); if (backupService.cloudOwner() !== user) throw Error('正在切换账号，请稍后重试');
-    if (backupService.isBusy()) throw Error('正在读取聊天或保存影片，完成后会自动同步');
+    if (backupService.canCloudSnapshot ? !backupService.canCloudSnapshot() : backupService.isBusy()) throw Error('正在整理备份，完成后会自动同步');
     const state = backupService.state(), legacy = backupService.localFolder();
     // Drain new readable chats first; an old local archive must not monopolize
     // every manual/automatic sync attempt while the live outbox grows.

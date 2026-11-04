@@ -1,5 +1,5 @@
 // Shared product guidance for the assistant and the distributable PDF.
-module.exports={version:'1.18.5',sections:[
+module.exports={version:'1.18.6',sections:[
 {id:'start',title:'安装与第一次使用',intro:'黑猫SCRM把多个平台的账号放在同一个Windows窗口中，聊天界面仍由各平台提供。',steps:[
 '运行 BlackCat-SCRM-Setup 安装程序，按向导选择安装位置；安装后从桌面或开始菜单打开黑猫SCRM，先用黑猫账号（用户名和密码）登录。',
 '点击左上方黑猫图标进入“所有账号”。点击“新建会话”，先选平台，再添加账号并在平台页面扫码或登录。',

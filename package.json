@@ -1,7 +1,7 @@
 {
   "name": "blackcat-crm",
   "productName": "黑猫SCRM",
-  "version": "1.18.5",
+  "version": "1.18.6",
   "description": "黑猫SCRM 多平台聊天与客户管理",
   "main": "main.js",
   "blackcatServer": "https://api.blackcatscrm.com",
@@ -46,6 +46,8 @@
       "wa-username.js",
       "wa-directory.js",
       "backup-download.js",
+      "backup-content.js",
+      "backup-media.js",
       "backup-identities.js",
       "message-alerts.js",
       "backup-account-lifecycle.js",
