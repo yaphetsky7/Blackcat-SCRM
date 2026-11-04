@@ -1,0 +1,12 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path'),{EventEmitter}=require('node:events');
+const {registerAssistant,guideFor}=require('../assistant-engine'),guide=require('../user-guide');
+async function main(){
+ const examples=[['怎么安装登录','start'],['Telegram 没响，怎么设置通知','accounts'],['怎样设置 Ctrl+T 翻译快捷键','translate'],['如何导入联系人并群发','contacts'],['怎么设置 Sonnet 学习知识库和AI回复','ai'],['怎样保存本地备份影片','backup'],['如何查看云端同步聊天','cloud'],['how do I use the assistant','assistant']];
+ for(const[question,id]of examples){const section=guide.sections.find(s=>s.id===id);assert(section,'Stable tutorial ID missing: '+id);const answer=guideFor(question);assert(answer.includes(section.title),question+' selected the wrong chapter');}
+ const saved=guide.sections.splice(0,guide.sections.length,...guide.sections.slice().reverse());try{assert(guideFor('如何设置云端同步').includes('云端聊天与资料恢复'));guide.sections.push({id:'future',title:'Future chapter',steps:[]});assert.doesNotThrow(()=>guideFor('怎么使用软件'));}finally{guide.sections.splice(0,guide.sections.length,...saved);}
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'blackcat-guide-test-')),app=new EventEmitter(),handlers=new Map(),sender={},requests=[];app.getPath=()=>root;
+ registerAssistant({app,ipcMain:{handle:(k,f)=>handlers.set(k,f)},getWindow:()=>({webContents:sender,isDestroyed:()=>false}),getKey:()=> 'fixture',clientFactory:()=>({messages:{create:async request=>{requests.push(request);return{content:[{type:'text',text:'开启翻译快捷键，Ctrl+T 翻译，再按 Enter 发送。'}]};}}})});
+ try{const response=await handlers.get('assistant:chat')({sender},{message:'只教我怎么设置翻译快捷键，不要替我修改。',context:{accounts:[],settings:{locale:'zh-CN'}}});assert(response.ok,response.error);assert.equal(requests.length,1);assert(requests[0].system.some(s=>s.text.includes('消息翻译与快捷回复')));assert(response.data.history.at(-1).text.includes('Ctrl+T'));assert.equal(response.data.history.at(-1).actions?.length||0,0);console.log('PASS: all 8 tutorial chapters, reordered/new chapters, and real assistant handler reach the model without executing an action.');}finally{app.emit('before-quit');if(path.dirname(path.resolve(root))!==path.resolve(os.tmpdir())||!path.basename(root).startsWith("blackcat-guide-test-"))throw Error("Unexpected fixture cleanup path");fs.rmSync(root,{recursive:true,force:true});}
+}
+main().catch(e=>{console.error(e);process.exitCode=1;});

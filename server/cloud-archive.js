@@ -12,7 +12,7 @@ function createCloudArchive({ db, getChunk, importDir = os.tmpdir() }) {
     CREATE INDEX IF NOT EXISTS cloud_archive_asset_message ON cloud_archive_assets(user_id,account,chat,message);
     CREATE TABLE IF NOT EXISTS cloud_archive_deleted(user_id INTEGER,account TEXT,chat TEXT,id TEXT,PRIMARY KEY(user_id,account,chat,id));`);
   const one = (s, ...p) => db.prepare(s).get(...p), run = (s, ...p) => db.prepare(s).run(...p), all = (s, ...p) => db.prepare(s).all(...p);
-  let importing = false;
+  const imports = new Map();
   function accountId(user, device, a) {
     const phone = String(a.me?.phone || a.phone || '').replace(/\D/g, ''), username = String(a.me?.username || a.username || '').replace(/^@/, '');
     const alias = one('SELECT account FROM cloud_archive_aliases WHERE user_id=? AND device=? AND local_id=?', user.id, device, a.id);
@@ -25,14 +25,21 @@ function createCloudArchive({ db, getChunk, importDir = os.tmpdir() }) {
     run('INSERT OR REPLACE INTO cloud_archive_aliases VALUES(?,?,?,?)', user.id, device, a.id, id);
     return id;
   }
-  async function importPoint(user, point) {
+  function importPoint(user, point) {
+    const key = JSON.stringify([user.id, point.id]);
+    if (imports.has(key)) return imports.get(key);
+    // Downloads may overlap. The database transaction below has no awaits,
+    // so commits stay serial without blocking fresh chats behind old R2 reads.
+    const pending = performImport(user, point).finally(() => { if (imports.get(key) === pending) imports.delete(key); });
+    imports.set(key, pending);
+    return pending;
+  }
+  async function performImport(user, point) {
     if (one('SELECT status FROM cloud_primary_points WHERE user_id=? AND id=?', user.id, point.id)?.status === 'ready') return { imported: true };
     const m = typeof point.manifest === 'string' ? JSON.parse(point.manifest) : point.manifest;
     const file = m.files.find(f => f.path === 'archive/chat-archive.sqlite');
     if (!file) return { imported: false };
     if (file.size > 128e6) throw Error('历史归档超过单次云端整理大小，请分账号迁移；原备份已保留');
-    if (importing) throw Object.assign(Error('云端正在整理另一份聊天，请稍后重试'), { status: 409 });
-    importing = true;
     const temp = path.join(importDir, '.cloud-import-' + crypto.randomUUID() + '.sqlite'); let from;
     try {
       const fd = await fs.promises.open(temp, 'wx'); const digest = crypto.createHash('sha256'); let size = 0;
@@ -83,10 +90,13 @@ function createCloudArchive({ db, getChunk, importDir = os.tmpdir() }) {
         db.exec('COMMIT');
       } catch (e) { db.exec('ROLLBACK'); throw e; }
       prune(user); return { imported: true, messages: rows.length };
-    } finally { from?.close(); try { await fs.promises.unlink(temp); } catch {} importing = false; }
+    } finally { from?.close(); try { await fs.promises.unlink(temp); } catch {} }
   }
   function prune(user) {
-    run("DELETE FROM cloud_primary_points WHERE user_id=? AND status='ready' AND id NOT IN(SELECT point FROM cloud_archive_messages WHERE user_id=? UNION SELECT point FROM cloud_archive_assets WHERE user_id=?)", user.id, user.id, user.id);
+    // A migrated legacy snapshot still needs its ready receipt after newer
+    // segments replace its last message, or opening the viewer imports it again.
+    const legacy = one("SELECT 1 FROM sqlite_master WHERE type='table' AND name='cloud_snapshots'");
+    run("DELETE FROM cloud_primary_points WHERE user_id=? AND status='ready' AND id NOT IN(SELECT point FROM cloud_archive_messages WHERE user_id=? UNION SELECT point FROM cloud_archive_assets WHERE user_id=?)" + (legacy ? ' AND id NOT IN(SELECT id FROM cloud_snapshots WHERE user_id=?)' : ''), ...[user.id, user.id, user.id, ...(legacy ? [user.id] : [])]);
   }
   function reactivate(user, device, accounts) {
     let restored = 0;

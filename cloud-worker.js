@@ -16,10 +16,13 @@ async function request(route, method = 'GET', body, binary = false) {
   }
 }
 async function upload() {
+  progress('正在连接云储存 / Connecting to cloud storage…');
   const state = await request('state');
   if (!state.eligible) throw Error('云备份需要 Business 或 Enterprise 配套');
   if (!state.configured) throw Error('管理员尚未接通 R2 云储存');
-  await request('cleanup', 'POST');
+  // Reclaiming unrelated historical objects can take minutes. It must never
+  // gate the upload or acknowledgement of new customer messages.
+  progress('正在整理待传记录 / Preparing pending chats…');
   const manifest = { version: 1, accounts: [], files: [] };
   let sent = 0, reused = 0;
   const fileCache = read(path.join(job.dataDir, 'cloud-file-cache.json'), {});
@@ -48,6 +51,7 @@ async function upload() {
     manifest.files.push(descriptor); nextCache[entry.path] = { stamp, descriptor };
   }
   validateManifest(manifest);
+  progress('正在确认云端保存 / Confirming cloud storage…');
   const result = await request('snapshots', 'POST', { label: job.label, manifest, requestId: crypto.randomUUID(), ...(job.primary ? { primary: true } : {}) });
   if (job.primary && result.primary !== true) throw Error('云端尚未确认接收聊天记录，临时缓冲已保留');
   if (job.primary && job.acknowledge) result.acknowledged = await require('./cloud-outbox').acknowledge({ root: job.folder, snapshot: path.join(job.stage, 'chat-archive.sqlite'), dataDir: job.dataDir });

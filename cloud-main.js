@@ -87,7 +87,9 @@ function registerCloud({ app, ipcMain, dialog, shell, getWindow, license, backup
     backupService.useCloud(user); if (backupService.cloudOwner() !== user) throw Error('正在切换账号，请稍后重试');
     if (backupService.isBusy()) throw Error('正在读取聊天或保存影片，完成后会自动同步');
     const state = backupService.state(), legacy = backupService.localFolder();
-    const migration = !!legacy && config().legacyMigrated !== legacy && (force || config().legacySkipped !== legacy) && fs.existsSync(path.join(legacy, 'chat-archive.sqlite'));
+    // Drain new readable chats first; an old local archive must not monopolize
+    // every manual/automatic sync attempt while the live outbox grows.
+    const migration = !state.counts.messages && !!legacy && config().legacyMigrated !== legacy && (force || config().legacySkipped !== legacy) && fs.existsSync(path.join(legacy, 'chat-archive.sqlite'));
     if (!migration && !state.counts.messages) return { empty: true };
     const stage = fs.mkdtempSync(path.join(dataDir, '.cloud-stage-'));
     backupService.setCloudSyncing(true);
