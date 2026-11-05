@@ -8,6 +8,7 @@ function registerCloudReader({ app, ipcMain, protocol, dialog, getWindow, cloud 
   function close() { for (const c of requests) c.abort(); requests.clear(); assets.clear(); current = null; }
   const active = token => { if (!current || token !== current.token || current.owner !== cloud.owner()) throw Error('云端浏览已关闭，请重新打开'); return current; };
   async function open() {
+    await cloud.reconcileAccounts?.();
     const owner = cloud.owner(), migration = await cloud.request('archive/prepare', 'POST'); if (cloud.owner() !== owner) throw Error('黑猫账号已改变');
     const accounts = await cloud.request('archive/accounts'); if (cloud.owner() !== owner) throw Error('黑猫账号已改变'); close();
     current = { token: crypto.randomUUID(), owner };
@@ -32,6 +33,7 @@ function registerCloudReader({ app, ipcMain, protocol, dialog, getWindow, cloud 
   async function execute(action, r) {
     if (action === 'open') return open(); if (action === 'close') { close(); return true; }
     const selected = active(r.token);
+    if(action==='refresh'){await cloud.reconcileAccounts?.();const accounts=await cloud.request('archive/accounts');active(r.token);return{accounts};}
     if (action === 'chats') return cloud.request('archive/chats?accountId=' + encodeURIComponent(r.accountId));
     if (action === 'messages') {
       const params = new URLSearchParams({ accountId: r.accountId, chatKey: r.chatKey, offset: String(r.offset || 0) });

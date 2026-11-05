@@ -14,7 +14,7 @@ async function writeAccountBundles(root,accounts=[],accountIds){
   const directory=path.join(root,'accounts');fs.mkdirSync(directory,{recursive:true});let map={};const mapFile=path.join(directory,'accounts.json');try{map=JSON.parse(fs.readFileSync(mapFile));}catch{}
   const used=new Map(Object.entries(map).map(([id,name])=>[String(name).toLowerCase(),id]));const results=[];
   try{for(const saved of from.prepare('SELECT * FROM accounts ORDER BY name,id').iterate()){if(accountIds&&!accountIds.includes(saved.id))continue;
-    const current=accounts.find(a=>a.id===saved.id);const account={id:saved.id,name:current?.name||saved.name,platform:saved.platform,me:{username:current?.me?.username||current?.self?.username||'',phone:current?.me?.phone||current?.self?.phone||''}};const deleted=lifecycle.metadata(from,saved.id);if(deleted){account.isDeleted=true;account.deletedAt=deleted.deletedAt;account.me={phone:deleted.phone||account.me.phone,username:deleted.username||account.me.username};}
+    const current=accounts.find(a=>a.id===saved.id),storedIdentity=from.prepare("SELECT 1 FROM sqlite_master WHERE name='account_identities' AND type='table'").get()?from.prepare('SELECT phone,username FROM account_identities WHERE account=?').get(saved.id):null;const account={id:saved.id,name:current?.name||saved.name,platform:saved.platform,me:{username:current?.self?.username||current?.me?.username||storedIdentity?.username||'',phone:current?.self?.phone||current?.me?.phone||storedIdentity?.phone||''}};const deleted=lifecycle.metadata(from,saved.id);if(deleted){account.isDeleted=true;account.deletedAt=deleted.deletedAt;account.me={phone:deleted.phone||account.me.phone,username:deleted.username||account.me.username};}
     let filename=account.isDeleted?'已删除账号备份/'+lifecycle.deletedFileName(account):accountFileName(account);if(used.has(filename.toLowerCase())&&used.get(filename.toLowerCase())!==account.id)filename=filename.replace(/\.blackcat$/, '_'+crypto.createHash('sha256').update(account.id).digest('hex').slice(0,8)+'.blackcat');
     if(fs.existsSync(path.join(directory,filename))){let existing;try{existing=new DatabaseSync(path.join(directory,filename),{readOnly:true});const metadata=existing.prepare('SELECT value FROM meta WHERE key=?').get('account');if(!metadata||JSON.parse(metadata.value).id!==account.id)throw Error('different account');}catch{filename=filename.replace(/\.blackcat$/, '_'+crypto.randomUUID().slice(0,8)+'.blackcat');}finally{existing?.close();}}
     const previous=map[account.id],dest=path.join(directory,filename);if(!path.resolve(dest).startsWith(path.resolve(directory)+path.sep))throw Error('账号备份路径异常');fs.mkdirSync(path.dirname(dest),{recursive:true});
@@ -22,6 +22,7 @@ async function writeAccountBundles(root,accounts=[],accountIds){
     const out=new DatabaseSync(dest);try{
       out.exec(`PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL;
         CREATE TABLE IF NOT EXISTS deleted_accounts(account TEXT PRIMARY KEY,name TEXT,phone TEXT,username TEXT,deletedAt INTEGER);
+        CREATE TABLE IF NOT EXISTS account_identities(account TEXT PRIMARY KEY,phone TEXT,username TEXT);
         CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY,value TEXT);
         CREATE TABLE IF NOT EXISTS accounts(id TEXT PRIMARY KEY,name TEXT,platform TEXT);
         CREATE TABLE IF NOT EXISTS chat_identities(account TEXT,chat TEXT,username TEXT,phone TEXT,PRIMARY KEY(account,chat));
@@ -34,7 +35,7 @@ async function writeAccountBundles(root,accounts=[],accountIds){
       out.exec('BEGIN');try{
         out.prepare('INSERT OR REPLACE INTO meta VALUES(?,?)').run('format','blackcat-account-v1');out.prepare('INSERT OR REPLACE INTO meta VALUES(?,?)').run('account',JSON.stringify(account));out.prepare('INSERT OR REPLACE INTO meta VALUES(?,?)').run('exportedAt',String(Date.now()));
         out.prepare('INSERT OR REPLACE INTO accounts VALUES(?,?,?)').run(account.id,account.name,account.platform);
-        for(const table of ['chats','messages','revisions','assets','chat_identities','deleted_accounts']){
+        for(const table of ['chats','messages','revisions','assets','chat_identities','deleted_accounts','account_identities']){
           if(!from.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table))continue;out.prepare('DELETE FROM '+table+' WHERE account=?').run(account.id);const columns=from.prepare('PRAGMA table_info('+table+')').all().map(c=>c.name);const have=new Set(out.prepare('PRAGMA table_info('+table+')').all().map(c=>c.name));for(const c of columns)if(!have.has(c))out.exec('ALTER TABLE '+table+' ADD COLUMN "'+c.replace(/"/g,'')+'"');const put=out.prepare('INSERT OR REPLACE INTO '+table+'('+columns.join(',')+') VALUES('+columns.map(()=>'?').join(',')+')');let n=0;
           for(const row of from.prepare('SELECT * FROM '+table+' WHERE account=?').iterate(account.id)){put.run(...columns.map(c=>row[c]));if(++n%300===0)await tick();}
         }

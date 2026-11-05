@@ -8,6 +8,7 @@ async function execute(r){
  const store=require('./backup-archive').createArchive(r.root);
  try{
   let result;
+  if(r.action==='reactivate')return require('./backup-account-lifecycle').reactivate(store.db,r.accounts||[]);
   if(r.action==='delete'){
    result=del.deleteRecords(store.db,r.request);del.removeGeneratedChats(r.root,result);del.removeImportedCopies(r.root,result.imports);result.freedBytes=del.collectUnusedMedia(store);
    if(r.request.scope==='account')del.deleteAccountBundle(r.root,r.request.accountId);

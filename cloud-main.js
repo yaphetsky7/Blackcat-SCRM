@@ -128,19 +128,21 @@ function registerCloud({ app, ipcMain, dialog, shell, getWindow, license, backup
   }, 5000); clock.unref?.();
   backupService.state();
   backupService.setCloudRecent(r => request('archive/recent', 'POST', r));
-  let accountLifecycle = Promise.resolve(), lifecycleRunning = false;
+  let accountLifecycle = Promise.resolve(), lifecycleRunning = false, lifecycleRequested=false;
   const lifecycleFile = path.join(dataDir, 'cloud-account-events.json'), lifecycle = read(lifecycleFile, {});
   function reconcileAccounts() {
+    lifecycleRequested=true;
     if (lifecycleRunning) return accountLifecycle;
     lifecycleRunning = true;
     const user = owner();
     accountLifecycle = accountLifecycle.catch(() => {}).then(async () => {
       if (owner() !== user || !primaryPlan()) return;
-      for (const [id, event] of Object.entries(lifecycle[user] || {})) {
+      do { lifecycleRequested=false;for (const [id, event] of Object.entries(lifecycle[user] || {})) {
         await request('archive/account-deleted', 'POST', { localId: id, account: event.account });
         if (lifecycle[user]?.[id]?.at === event.at) { delete lifecycle[user][id]; atomic(lifecycleFile, lifecycle); }
       }
       await request('archive/accounts-active', 'POST', { accounts: read(path.join(dataDir, 'accounts.json'), []).map(require('./cloud-data').safeAccount) });
+      }while(lifecycleRequested&&owner()===user&&primaryPlan());
     }).finally(() => { lifecycleRunning = false; });
     return accountLifecycle;
   }
@@ -151,6 +153,6 @@ function registerCloud({ app, ipcMain, dialog, shell, getWindow, license, backup
     atomic(linkedFile, linked); atomic(lifecycleFile, lifecycle); reconcileAccounts().catch(() => {});
   });
   app.on('before-quit', () => { unschedule(clock); current?.worker.terminate(); });
-  return { state, request, owner, syncPrimary, downloadedFolder: () => config().lastDownload?.folder || '' };
+  return { state, request, owner, syncPrimary, reconcileAccounts, downloadedFolder: () => config().lastDownload?.folder || '' };
 }
 module.exports = { registerCloud };

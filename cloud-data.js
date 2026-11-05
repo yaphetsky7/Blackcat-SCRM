@@ -5,7 +5,7 @@ const { DatabaseSync, backup } = require('node:sqlite');
 const { RECORDS, validPath } = require('./cloud-format');
 const atomic = (file, value) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file + '.cloud-tmp', JSON.stringify(value, null, 2)); fs.renameSync(file + '.cloud-tmp', file); };
 function read(file, fallback) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { if (e.code === 'ENOENT') return fallback; throw Error('资料无法读取：' + path.basename(file)); } }
-function safeAccount(a) { return { id: String(a.id), name: String(a.name || ''), platform: String(a.platform || ''), me: { phone: String(a.me?.phone || a.self?.phone || ''), username: String(a.me?.username || a.self?.username || '') } }; }
+function safeAccount(a) { return { id: String(a.id), name: String(a.name || ''), platform: String(a.platform || ''), me: { phone: String(a.self?.phone || a.me?.phone || ''), username: String(a.self?.username || a.me?.username || '') } }; }
 function knowledgeExport(value) {
   const out = structuredClone(value);
   // Connections contain machine-encrypted API credentials; source content and learned cards are portable.

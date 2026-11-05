@@ -600,7 +600,7 @@ backupService=require('./backup-main').registerBackup({ app, ipcMain, dialog, sh
 const cloudService = require('./cloud-main').registerCloud({ app, ipcMain, dialog, shell, getWindow: () => win, license, backupService, aiService, notesStore });
 require('./cloud-reader').registerCloudReader({ app, ipcMain, protocol, dialog, getWindow:()=>win, cloud:cloudService });
 app.whenReady().then(() => { if (cloudRestoreError) dialog.showErrorBox('云备份恢复未完成', cloudRestoreError + '\n原资料已保留，请检查后重新打开软件。'); });
-require('./backup-reader').registerBackupReader({app,ipcMain,protocol,dialog,getWindow:()=>win,getFolder:()=>backupService.state().folder,getCloudFolder:()=>cloudService.downloadedFolder(),getAccounts:loadAccounts,resolveIdentity:backupService.identityFor,removeLive:request=>backupService.removeRecords(request),isBusy:()=>backupService.isBusy()});
+require('./backup-reader').registerBackupReader({app,ipcMain,protocol,dialog,getWindow:()=>win,getFolder:()=>backupService.state().folder,getCloudFolder:()=>cloudService.downloadedFolder(),getAccounts:loadAccounts,resolveIdentity:backupService.identityFor,removeLive:request=>backupService.removeRecords(request),isBusy:()=>backupService.isBusy(),reconcile:()=>backupService.reconcileAccounts()});
 
 }
 
