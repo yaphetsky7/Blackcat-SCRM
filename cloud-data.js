@@ -31,7 +31,7 @@ async function* collect({ dataDir, folder, stage, archiveOnly = false, excludeAr
   for (const name of RECORDS) {
     if (archiveOnly && name !== 'account-index.json') continue;
     let value;
-    if (name === 'account-index.json') value = read(path.join(dataDir, 'accounts.json'), []).map(safeAccount);
+    if (name === 'account-index.json') value = read(path.join(dataDir, 'accounts.json'), []).filter(a=>!archiveOnly||require('./backup-platforms').supports(a)).map(safeAccount);
     else value = read(path.join(dataDir, name), null);
     if (value === null) continue;
     if (name === 'ai-knowledge.json') value = knowledgeExport(value);
@@ -43,6 +43,7 @@ async function* collect({ dataDir, folder, stage, archiveOnly = false, excludeAr
     const db = new DatabaseSync(path.join(folder, 'chat-archive.sqlite'), { readOnly: true });
     const file = path.join(stage, 'chat-archive.sqlite');
     try { await backup(db, file); } finally { db.close(); }
+    const selected=new DatabaseSync(file);let mediaPaths,importPaths;try{const tables=selected.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all().map(r=>r.name),excluded=selected.prepare('SELECT id,platform FROM accounts').all().filter(a=>!require('./backup-platforms').supports(a));selected.exec('BEGIN');try{for(const a of excluded){for(const t of tables){const quoted='"'+t.replaceAll('"','""')+'"';if(selected.prepare('PRAGMA table_info('+quoted+')').all().some(c=>c.name==='account'))selected.prepare('DELETE FROM '+quoted+' WHERE account=?').run(a.id);}selected.prepare('DELETE FROM accounts WHERE id=?').run(a.id);}selected.exec('COMMIT');}catch(e){selected.exec('ROLLBACK');throw e;}mediaPaths=new Set(selected.prepare("SELECT path FROM assets WHERE path!=''").all().map(a=>a.path.replaceAll('\\','/')));importPaths=tables.includes('imports')?selected.prepare('SELECT path FROM imports').all().map(a=>a.path.replaceAll('\\','/')):[];}finally{selected.close();}
     if (archiveOnly) {
       // Include changed customer headers even when their messages are already acknowledged.
       const compact = new DatabaseSync(file);
@@ -58,9 +59,10 @@ async function* collect({ dataDir, folder, stage, archiveOnly = false, excludeAr
         compact.exec('VACUUM;');
       } finally { compact.close(); }
     }
+    if(!archiveOnly){const cleanCopy=new DatabaseSync(file);try{cleanCopy.exec('VACUUM;');}finally{cleanCopy.close();}}
     yield { path: 'archive/chat-archive.sqlite', file };
-    yield* walk(path.join(folder, 'media'), 'archive/media');
-    yield* walk(path.join(folder, 'imports'), 'archive/imports');
+    for await(const entry of walk(path.join(folder,'media'),'archive/media'))if(mediaPaths.has(entry.path.slice('archive/'.length)))yield entry;
+    for await(const entry of walk(path.join(folder,'imports'),'archive/imports'))if(importPaths.some(p=>entry.path.slice('archive/'.length)===p||entry.path.slice('archive/'.length).startsWith(p+'/')))yield entry;
   }
 }
 function accountIdentity(a) {

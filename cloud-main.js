@@ -87,7 +87,7 @@ function registerCloud({ app, ipcMain, dialog, shell, getWindow, license, backup
     backupService.useCloud(user); if (backupService.cloudOwner() !== user) throw Error('正在切换账号，请稍后重试');
     if (backupService.canCloudSnapshot ? !backupService.canCloudSnapshot() : backupService.isBusy()) throw Error('正在整理备份，完成后会自动同步');
     const state = backupService.state(), legacy = backupService.localFolder();
-    const pending = state.counts.messages || require('./cloud-outbox').pending(state.folder);
+    const pending = require('./cloud-outbox').pending(state.folder);
     // Drain new readable chats first; an old local archive must not monopolize
     // every manual/automatic sync attempt while the live outbox grows.
     const migration = !pending && !!legacy && config().legacyMigrated !== legacy && (force || config().legacySkipped !== legacy) && fs.existsSync(path.join(legacy, 'chat-archive.sqlite'));

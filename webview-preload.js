@@ -1728,7 +1728,7 @@ function installBackupGuest({ipc,getConfig,getAdapter,getComposer,getBoxText,bri
   const Content=backupContent;const Timeline=backupTimeline;const TelegramSource=backupTelegramSource;const WhatsAppSource=backupWhatsAppSource;const waOriginals=new Map();let waHistoryScope='',waHistoryRecords=new Map();let waScope='',waAt=0,waSignature='',waRecords=new Map();let nativeExpected=0;const historySeen=new Map();let nativeScope='',nativeAt=0,nativeSignature='',nativeRecords=new Map();
   let lastDigest='',lastCapture=0,capturing=false,workers=0,awaitingChat=null,lastReadChat='',lastReadSignature='',chatSeenId='',chatSeenAt=0;const pending=new Map(),active=new Set(),failed=new Map();
   const hash=text=>{let n=2166136261;for(const c of String(text)){n^=c.codePointAt(0);n=Math.imul(n,16777619);}return(n>>>0).toString(36);};
-  const enabled=()=>getConfig()?.backupWatch===true;
+  const enabled=()=>getConfig()?.backupWatch===true&&['web.whatsapp.com','web.telegram.org'].includes(location.host);
   let scanning=0;let waIdentity=null;
   function backupChat(){const snap=bridge.snapshot(),chat=snap?.conversation;if(location.host==='web.whatsapp.com'&&waIdentity?.available&&(waIdentity.ambiguousTitle||!chat?.key||chat.ambiguous))return{key:'whatsapp:'+waIdentity.chatId,title:waIdentity.title,nativeIdentity:true};return chat;}
   function queueAsset(asset){const old=failed.get(asset.id);if(pending.has(asset.id)||active.has(asset.id))return;if(old&&old.source===asset.source&&Date.now()-old.at<60000)throw Error('附件传输稍后自动重试');pending.set(asset.id,{...asset,pinned:pin(asset.source,asset.quality==='download-link'?null:[...document.images].find(image=>(image.currentSrc||image.src)===asset.source))});pump();pump();}

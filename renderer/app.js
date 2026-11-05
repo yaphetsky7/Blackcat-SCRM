@@ -75,7 +75,7 @@ function updateViewActivity() {
   for (const [id, view] of Object.entries(views)) {
     // AI accounts must keep rendering: Telegram virtualizes text and badges
     // when its guest view is visibility:hidden, even if timers stay awake.
-    const working = heldViews.has(id) || !!window.shouldAccountStayOnline?.(id) || !!window.backupController?.keepOnline();
+    const working = heldViews.has(id) || !!window.shouldAccountStayOnline?.(id) || !!window.backupController?.keepOnline(id);
     view.classList.toggle('background-work', working);
     const awake = (!window.isInboxHome?.() && id === activeId()) || working || window.shouldAccountStayOnline?.(id) || window.keepAllSessionsOnline?.();
     try { activity.push({ id: view.getWebContentsId(), awake: !!awake }); } catch {}
@@ -821,7 +821,7 @@ function pushTranslate(acc) {
   try {
     const labels = Object.fromEntries(LANGS.map(([code, name]) => [code, window.I18N?.t(name) || name]));
     const translate = window.blackcatLicense?.limits?.features?.realtime === false ? { ...translateOf(acc), realtime: false } : translateOf(acc);
-    views[acc.id]?.send('wam:settings', { translate, labels, active: !window.isInboxHome?.() && acc.id === activeId() && acc.platform === currentPlatform, inboxWatch: !!window.isInboxWatching?.(acc.id), aiWatch: !!window.shouldAccountStayOnline?.(acc.id), backupWatch: !!window.backupController?.keepOnline(), unreadWatch:true, locale: window.I18N?.locale || 'zh-CN', theme: document.documentElement.dataset.theme || 'light' });
+    views[acc.id]?.send('wam:settings', { translate, labels, active: !window.isInboxHome?.() && acc.id === activeId() && acc.platform === currentPlatform, inboxWatch: !!window.isInboxWatching?.(acc.id), aiWatch: !!window.shouldAccountStayOnline?.(acc.id), backupWatch: !!window.backupController?.keepOnline(acc), unreadWatch:true, locale: window.I18N?.locale || 'zh-CN', theme: document.documentElement.dataset.theme || 'light' });
   } catch { /* webview 还没就绪，就绪后会再推 */ }
 }
 

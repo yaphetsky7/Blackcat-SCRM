@@ -15,12 +15,12 @@ function headerSignature(c) {
 function dirtyChatRows(db) {
   const exists=db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='cloud_chat_ack'").get();
   const receipts=exists?new Map(db.prepare('SELECT * FROM cloud_chat_ack').all().map(c=>[JSON.stringify([c.account,c.chat]),c.hash])):new Map();
-  return chatRows(db).filter(c=>receipts.get(JSON.stringify([c.account,c.key]))!==headerSignature(c));
+  return chatRows(db).filter(c=>require('./backup-platforms').supports(c)&&receipts.get(JSON.stringify([c.account,c.key]))!==headerSignature(c));
 }
 function pending(root) {
   if (!root || !fs.existsSync(path.join(root, 'chat-archive.sqlite'))) return 0;
   const db = new DatabaseSync(path.join(root, 'chat-archive.sqlite'), { readOnly: true });
-  try { return db.prepare('SELECT COUNT(*) n FROM messages').get().n+dirtyChatRows(db).length; } finally { db.close(); }
+  try { return db.prepare("SELECT COUNT(*) n FROM messages m JOIN accounts a ON a.id=m.account WHERE a.platform IN ('whatsapp','telegram')").get().n+dirtyChatRows(db).length; } finally { db.close(); }
 }
 async function acknowledge({ root, snapshot, dataDir }) {
   const target = path.resolve(root), parent = path.resolve(dataDir, 'cloud-outbox');

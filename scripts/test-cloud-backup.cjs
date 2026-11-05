@@ -28,6 +28,7 @@ async function main() {
   fs.mkdirSync(path.join(dataDir, 'knowledge-files')); fs.writeFileSync(path.join(dataDir, 'knowledge-files', 'source.txt'), 'Product reference');
   const folder = path.join(root, 'archive'), archive = createArchive(folder); archive.db.prepare('INSERT INTO accounts(id,name,platform) VALUES(?,?,?)').run('wa-1', 'MH', 'whatsapp'); archive.close();
   const video = crypto.randomBytes(CHUNK + 1024); fs.writeFileSync(path.join(folder, 'media', 'test.mp4'), video);
+  const owned=createArchive(folder);try{owned.ingest(account,{chat:{key:'whatsapp:customer-1',title:'Amy'},messages:[{id:'video-1',text:'Video fixture',assets:[{kind:'video',name:'test.mp4'}]}]});owned.db.prepare("UPDATE assets SET path='media/test.mp4',status='saved',quality='download-link',mime='video/mp4',size=? WHERE account=?").run(video.length,account.id);}finally{owned.close();}
   const http = require('http');
   const server = http.createServer(async (req, res) => {
     const token = req.headers.authorization; const user = token === 'Bearer a' ? a : token === 'Bearer b' ? b : null;
