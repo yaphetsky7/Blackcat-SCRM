@@ -1898,3 +1898,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
 .cloud-categories{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin:18px 0}.cloud-category{display:flex;flex-direction:column;gap:8px;padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--bg);min-width:0}.cloud-category span{font-size:12px;color:var(--muted);overflow-wrap:anywhere}.cloud-category strong{font-size:22px;font-variant-numeric:tabular-nums}
 
 .cloud-category small{font-size:11px;line-height:1.5;color:var(--muted);overflow-wrap:anywhere}
+
+.bv-message-meta,.bv-message-date-warning,.bv-message-warning{display:block;line-height:1.6;margin-bottom:6px}.bv-message-warning{color:var(--muted);font-size:11px}
+
+.bv-legacy-records{border:1px dashed var(--border);border-radius:10px;padding:12px;margin-top:12px;align-self:stretch}.bv-legacy-records summary{cursor:pointer;color:var(--muted);font-size:12px}.bv-legacy-items{display:flex;flex-direction:column;gap:12px;margin-top:12px}
