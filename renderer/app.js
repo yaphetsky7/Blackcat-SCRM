@@ -475,6 +475,14 @@ function newSession(platform, options = {}) {
     platform: sessionPlatform,
     seq,
     name: `name-${pad(seq)}`,
+    // Keep the legacy fallback for existing accounts; new sessions start with translation off.
+    translate: {
+      ...structuredClone(DEFAULT_TRANSLATE),
+      incoming: { ...DEFAULT_TRANSLATE.incoming, enabled: false },
+      outgoing: { ...DEFAULT_TRANSLATE.outgoing, enabled: false },
+      realtime: false,
+      shortcut: { ...DEFAULT_TRANSLATE.shortcut, enabled: false },
+    },
   };
   accounts.push(acc);
   persist();
