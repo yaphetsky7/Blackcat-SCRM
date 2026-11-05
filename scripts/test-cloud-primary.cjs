@@ -33,6 +33,28 @@ async function main() {
     const accounts = await api('archive/accounts'); assert.equal(accounts.length, 1); assert.equal(accounts[0].messages, 2); assert.equal(accounts[0].identity, '+60100000000');
     assert.equal((await api('archive/accounts', 'GET', undefined, false, 'other')).length, 0);
     const remoteId = accounts[0].id, chats = await api('archive/chats?accountId=' + remoteId); assert.equal(chats[0].phone, '60111111111');
+    const headers=require('../cloud-outbox');
+    assert.equal(headers.dirtyChatRows(outbox.db).length,0,'confirmed headers should not upload repeatedly');
+    outbox.discover(account,[{key:'unread',title:'Unread customer',phone:'60122222222'},{key:'ambiguous',title:'Shared name',ambiguous:true}]);
+    assert.equal(headers.dirtyChatRows(outbox.db).length,2);
+    await worker(dataDir,folder);
+    let listed=await api('archive/chats?accountId='+remoteId);
+    assert.equal(listed.find(c=>c.key==='whatsapp:unread').messages,0,'discovered customers remain visible before reading messages');
+    assert.equal(listed.find(c=>c.key==='whatsapp:unread').phone,'60122222222');
+    assert.match(listed.find(c=>c.key==='whatsapp:ambiguous').error,/身份/,'ambiguous identity is pending rather than silently omitted');
+    assert.equal(headers.dirtyChatRows(outbox.db).length,0);
+    outbox.coverage(account.id,'whatsapp:unread','partial','History still loading');await worker(dataDir,folder);
+    assert.equal((await api('archive/chats?accountId='+remoteId)).find(c=>c.key==='whatsapp:unread').error,'History still loading','coverage-only changes sync after message acknowledgement');
+    outbox.ingest(account,{chat:{key:'whatsapp:exact',listKey:'whatsapp:unread',title:'Unread customer'},messages:[]});await worker(dataDir,folder);
+    listed=await api('archive/chats?accountId='+remoteId);
+    assert(!listed.some(c=>c.key==='whatsapp:unread'),'only confirmed empty aliases are removed');assert(listed.some(c=>c.key==='whatsapp:exact'));
+    await api('archive/delete','POST',{scope:'chat',accountId:remoteId,chatKey:'whatsapp:exact'});
+    outbox.coverage(account.id,'whatsapp:exact','partial','Metadata retry');await worker(dataDir,folder);
+    assert(!(await api('archive/chats?accountId='+remoteId)).some(c=>c.key==='whatsapp:exact'),'header retries must not resurrect deleted backups');
+    const emptyAccount={id:'empty',platform:'telegram',name:'Metadata only',self:{username:'fixture_empty'}};
+    atomic(path.join(dataDir,'accounts.json'),[account,emptyAccount]);outbox.discover(emptyAccount,[{key:'#1000',title:'Awaiting scan'}]);await worker(dataDir,folder);
+    assert((await api('archive/accounts')).some(a=>a.name==='Metadata only'&&a.messages===0&&a.chats===1),'metadata-only accounts remain visible');
+    assert.equal((await api('archive/accounts','GET',undefined,false,'other')).length,0);
     const page = await api('archive/messages?' + new URLSearchParams({ accountId: remoteId, chatKey: first.chat.key })); assert.equal(page.total, 2); assert.equal(page.messages[0].text, 'Cloud first');
     const media = page.messages[1].assets[0]; assert.equal(media.status, 'saved'); const asset = await api('archive/asset?id=' + media.id);
     const restored = Buffer.concat(await Promise.all(asset.file.chunks.map(c => api('chunks/' + c.hash, 'GET', undefined, true)))); assert(restored.equals(video));
@@ -51,12 +73,18 @@ async function main() {
     assert(online.messages.find(m => m.id === '2').assets[0].url.startsWith('blackcat-cloud://'));
     const start = CHUNK - 10, end = CHUNK + 10; const ranged = await protocol.get('blackcat-cloud')(new Request('blackcat-cloud://' + source.token + '/' + media.id, { headers: { range: 'bytes=' + start + '-' + end } }));
     assert.equal(ranged.status, 206); assert(Buffer.from(await ranged.arrayBuffer()).equals(video.subarray(start, end + 1))); reader.close();
+    const emojiMessage={id:'7',text:'Preview',assets:[{slot:'photo:0',kind:'image',source:'fixture',quality:'page'}]},emojiAsset=outbox.ingest(account,{chat:first.chat,messages:[emojiMessage]})[0],emojiSink=outbox.startAsset(emojiAsset.id);emojiSink.write(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a/csAAAAASUVORK5CYII=','base64'));emojiSink.finish('image/png','page');await worker(dataDir,folder);outbox.ingest(account,{chat:first.chat,messages:[{id:'7',text:'👍',sourceConfidence:'telegram-cache',sourceEmoji:true,sourceMediaComplete:true,sourceMediaKinds:[],assets:[]}]});await worker(dataDir,folder);const repairedEmoji=(await api('archive/messages?'+new URLSearchParams({accountId:remoteId,chatKey:first.chat.key}))).messages.find(m=>m.id==='7');assert.equal(repairedEmoji.text,'👍');assert.deepEqual(repairedEmoji.assets,[],'Reclassified emoji images must disappear from cloud history');
     await api('archive/delete', 'POST', { scope: 'chat', accountId: remoteId, chatKey: first.chat.key });
     outbox.ingest(account, { chat: first.chat, messages: [{ id: '1', text: 'Old message edited after deletion', direction: 'incoming' }, { id: '4', text: 'New after deletion', direction: 'incoming' }] }); await worker(dataDir, folder);
     const after = await api('archive/messages?' + new URLSearchParams({ accountId: remoteId, chatKey: first.chat.key })); assert.deepEqual(after.messages.map(m => m.id), ['4']);
     outbox.ingest(account, { chat: first.chat, messages: [{ id: '5', text: 'Quota failure must stay pending', direction: 'incoming' }] });
     const originalPut = storage.put; storage.put = async () => { throw Object.assign(Error('Storage full'), { status: 507 }); };
     await assert.rejects(worker(dataDir, folder), /Storage full/); assert(outbox.db.prepare('SELECT 1 FROM messages WHERE id=?').get('5')); storage.put = originalPut;
+    await worker(dataDir,folder);await api('archive/delete','POST',{scope:'account',accountId:remoteId});
+    outbox.ingest(account,{chat:first.chat,messages:[{id:'4',text:'Old edited replay',direction:'incoming'}]});await worker(dataDir,folder);
+    assert(!(await api('archive/accounts')).some(a=>a.id===remoteId),'deleting an account backup preserves hidden identity and prevents replay');
+    outbox.ingest(account,{chat:first.chat,messages:[{id:'9',text:'A new capture',direction:'incoming'}]});await worker(dataDir,folder);
+    assert.deepEqual((await api('archive/messages?'+new URLSearchParams({accountId:remoteId,chatKey:first.chat.key}))).messages.map(m=>m.id),['9']);
     console.log('PASS: cloud-primary capture, acknowledged buffer removal, no replay, permanent history across segments, cloud viewer/video range streaming, tenant isolation, deletion tombstones, quota/offline retention.');
   } finally { outbox.close(); await new Promise(r => server.close(r)); store.close(); }
 }

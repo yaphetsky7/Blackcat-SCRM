@@ -162,7 +162,7 @@
       if (view.dataset.inboxReady !== '1') throw new Error('账号页面尚未就绪，请确认已登录');
       const requestId = uid();
       const result = new Promise((resolve, reject) => {
-        const timer = setTimeout(() => { waiters.delete(requestId); reject(new Error('会话操作超时，请在原平台确认状态')); }, action === 'more' ? 30000 : 20000);
+        const timer = setTimeout(() => { waiters.delete(requestId);cleanup();if(action.startsWith('backup-'))try{view.send('wam:backup-cancel',{requestId});}catch{}reject(new Error('会话操作超时，请在原平台确认状态')); }, action==='backup-step'?60000:action === 'more' ? 30000 : 20000);
         const cleanup=()=>signal?.removeEventListener('abort',abort);const abort=()=>{clearTimeout(timer);waiters.delete(requestId);cleanup();try{view.send('wam:backup-cancel',{requestId});}catch{}reject(signal.reason||new Error('扫描已停止'));};
         waiters.set(requestId, { resolve:v=>{cleanup();resolve(v);}, reject:e=>{cleanup();reject(e);}, timer });signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)abort();
       });

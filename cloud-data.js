@@ -44,12 +44,18 @@ async function* collect({ dataDir, folder, stage, archiveOnly = false, excludeAr
     const file = path.join(stage, 'chat-archive.sqlite');
     try { await backup(db, file); } finally { db.close(); }
     if (archiveOnly) {
-      // Send only the pending chat segment, not the local digest ledger or unrelated chat headers.
+      // Include changed customer headers even when their messages are already acknowledged.
       const compact = new DatabaseSync(file);
       try {
         const has = table => !!compact.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table);
-        for (const table of ['cloud_ack','revisions','runs','files','deleted_messages','deleted_chats','chat_aliases']) if (has(table)) compact.exec('DELETE FROM ' + table);
-        compact.exec('DELETE FROM chats WHERE NOT EXISTS(SELECT 1 FROM messages m WHERE m.account=chats.account AND m.chat=chats.key); DELETE FROM accounts WHERE NOT EXISTS(SELECT 1 FROM messages m WHERE m.account=accounts.id); VACUUM;');
+        const dirty=require('./cloud-outbox').dirtyChatRows(compact);
+        compact.exec('CREATE TEMP TABLE dirty_headers(account TEXT,chat TEXT,PRIMARY KEY(account,chat));');
+        for(const c of dirty)compact.prepare('INSERT INTO dirty_headers VALUES(?,?)').run(c.account,c.key);
+        compact.exec('DELETE FROM chats WHERE NOT EXISTS(SELECT 1 FROM messages m WHERE m.account=chats.account AND m.chat=chats.key) AND NOT EXISTS(SELECT 1 FROM dirty_headers d WHERE d.account=chats.account AND d.chat=chats.key); DELETE FROM accounts WHERE NOT EXISTS(SELECT 1 FROM chats c WHERE c.account=accounts.id);');
+        if(has('chat_aliases'))compact.exec('DELETE FROM chat_aliases WHERE NOT EXISTS(SELECT 1 FROM chats c WHERE c.account=chat_aliases.account AND c.key=chat_aliases.chatKey)');
+        if(has('chat_identities'))compact.exec('DELETE FROM chat_identities WHERE NOT EXISTS(SELECT 1 FROM chats c WHERE c.account=chat_identities.account AND c.key=chat_identities.chat)');
+        for (const table of ['cloud_ack','cloud_media_ack','cloud_chat_ack','revisions','runs','files','deleted_messages','deleted_chats']) if (has(table)) compact.exec('DELETE FROM ' + table);
+        compact.exec('VACUUM;');
       } finally { compact.close(); }
     }
     yield { path: 'archive/chat-archive.sqlite', file };

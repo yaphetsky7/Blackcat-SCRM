@@ -77,6 +77,7 @@ contextBridge.exposeInMainWorld('api', {
   messageNotify: request=>ipcRenderer.invoke('messages:notify',request),
   onMessageNotificationOpen: fn=>{const listener=(_e,id,chat)=>fn(id,chat);ipcRenderer.on('messages:open-account',listener);return()=>ipcRenderer.removeListener('messages:open-account',listener);},
   backupState: () => ipcRenderer.invoke('backup:state'),
+  backupResetMedia: accountId => ipcRenderer.invoke('backup:reset-media',{accountId}),
   backupRecent: (accountId, chatKey, skip, limit) => ipcRenderer.invoke('backup:recent', { accountId, chatKey, skip, limit }),
   backupFolder: () => ipcRenderer.invoke('backup:folder'),
   backupConfigure: (enabled, automatic, idleMinutes) => ipcRenderer.invoke('backup:configure', { enabled, automatic, idleMinutes }),
