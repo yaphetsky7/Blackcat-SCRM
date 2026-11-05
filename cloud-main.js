@@ -153,6 +153,6 @@ function registerCloud({ app, ipcMain, dialog, shell, getWindow, license, backup
     atomic(linkedFile, linked); atomic(lifecycleFile, lifecycle); reconcileAccounts().catch(() => {});
   });
   app.on('before-quit', () => { unschedule(clock); current?.worker.terminate(); });
-  return { state, request, owner, syncPrimary, reconcileAccounts, downloadedFolder: () => config().lastDownload?.folder || '' };
+  return { state, request, owner, syncPrimary, reconcileAccounts, isBusy:()=>!!current||!!businessTask, downloadedFolder: () => config().lastDownload?.folder || '' };
 }
 module.exports = { registerCloud };

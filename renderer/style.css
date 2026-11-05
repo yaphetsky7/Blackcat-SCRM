@@ -1902,3 +1902,5 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
 .bv-message-meta,.bv-message-date-warning,.bv-message-warning{display:block;line-height:1.6;margin-bottom:6px}.bv-message-warning{color:var(--muted);font-size:11px}
 
 .bv-legacy-records{border:1px dashed var(--border);border-radius:10px;padding:12px;margin-top:12px;align-self:stretch}.bv-legacy-records summary{cursor:pointer;color:var(--muted);font-size:12px}.bv-legacy-items{display:flex;flex-direction:column;gap:12px;margin-top:12px}
+
+.local-workspace-box{margin-top:24px}.local-workspace-path{overflow-wrap:anywhere;font-size:12px;line-height:1.6}.local-workspace-box .backup-actions{flex-wrap:wrap}

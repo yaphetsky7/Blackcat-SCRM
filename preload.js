@@ -76,6 +76,8 @@ contextBridge.exposeInMainWorld('api', {
   openUserGuide:()=>ipcRenderer.invoke('help:guide'),
   messageNotify: request=>ipcRenderer.invoke('messages:notify',request),
   onMessageNotificationOpen: fn=>{const listener=(_e,id,chat)=>fn(id,chat);ipcRenderer.on('messages:open-account',listener);return()=>ipcRenderer.removeListener('messages:open-account',listener);},
+  localWorkspace: (action,request) => ipcRenderer.invoke('workspace:'+action,request),
+  onLocalWorkspaceChanged: fn => { const listener=()=>fn();ipcRenderer.on('workspace:changed',listener);return()=>ipcRenderer.removeListener('workspace:changed',listener); },
   backupState: () => ipcRenderer.invoke('backup:state'),
   backupResetMedia: accountId => ipcRenderer.invoke('backup:reset-media',{accountId}),
   backupRecent: (accountId, chatKey, skip, limit) => ipcRenderer.invoke('backup:recent', { accountId, chatKey, skip, limit }),
