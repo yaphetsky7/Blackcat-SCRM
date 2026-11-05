@@ -1,7 +1,7 @@
 {
   "name": "blackcat-crm",
   "productName": "黑猫SCRM",
-  "version": "1.18.8",
+  "version": "1.18.9",
   "description": "黑猫SCRM 多平台聊天与客户管理",
   "main": "main.js",
   "blackcatServer": "https://api.blackcatscrm.com",
@@ -71,7 +71,8 @@
       "cloud-sync-client.js",
       "cloud-sync-engine.js",
       "backup-telegram-source.js",
-      "backup-whatsapp-source.js"
+      "backup-whatsapp-source.js",
+      "backup-audio-auto.js"
     ],
     "win": {
       "target": [

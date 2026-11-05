@@ -20,16 +20,16 @@
     const unavailable={available:false};
     try{
       if(!request.messageId||!request.chatId||!/^[a-f0-9]{64}$/.test(request.expectedHash||'')||!(request.expectedBytes>0))return unavailable;
-      const visible=new Set([...document.querySelectorAll('#main [data-id]')].map(el=>el.getAttribute('data-id')));if(!visible.size)return unavailable;
+      const visible=new Set([...document.querySelectorAll('#main [data-id]')].map(el=>el.getAttribute('data-id')));if(!visible.size&&!(request.resume===true&&request.start===false))return unavailable;
       const get=globalThis.require;if(typeof get!=='function')return unavailable;
-      const all=get('WAWebMsgCollection').MsgCollection.getModelsArray();if(!all.some(m=>{const full=String(m.id?._serialized||m.id?.toString?.()||''),chat=String(m.id?.remote?._serialized||m.id?.remote||full.split('_')[1]||'');return chat===request.chatId&&(visible.has(String(m.id?.id||''))||visible.has(full))}))return unavailable;
+      const all=get('WAWebMsgCollection').MsgCollection.getModelsArray();if(!(request.resume===true&&request.start===false)&&!all.some(m=>{const full=String(m.id?._serialized||m.id?.toString?.()||''),chat=String(m.id?.remote?._serialized||m.id?.remote||full.split('_')[1]||'');return chat===request.chatId&&(visible.has(String(m.id?.id||''))||visible.has(full))}))return unavailable;
       const matches=all.filter(m=>{const full=String(m.id?._serialized||m.id?.toString?.()||''),id=String(m.id?.id||''),chat=String(m.id?.remote?._serialized||m.id?.remote||full.split('_')[1]||'');return chat===request.chatId&&(id===request.messageId||full===request.messageId)});
       if(matches.length!==1)return unavailable;const model=matches[0],kind={image:'image',video:'video',document:'file',audio:'audio',ptt:'audio',sticker:'sticker'}[model.type],rawHash=model.filehash||model.mediaData?.filehash;
       if(kind!==request.kind||normalizeHash(rawHash)!==request.expectedHash||Number(model.size)!==request.expectedBytes)return unavailable;
       const cache=get('WAWebMediaInMemoryBlobCache').InMemoryMediaBlobCache;
       if(cache.has(rawHash)){const blob=cache.get(rawHash);if(!(blob instanceof Blob)||blob.size!==request.expectedBytes)return unavailable;const source=cache.getOrCreateURL(rawHash);return typeof source==='string'&&source.startsWith('blob:')?{available:true,source,mime:blob.type,size:blob.size}:unavailable;}
       const jobs=globalThis.__blackcatBackupMediaDownloads||(globalThis.__blackcatBackupMediaDownloads=new Map()),key=request.chatId+'|'+request.messageId+'|'+request.expectedHash;let job=jobs.get(key);
-      if(job?.done&&request.retry){jobs.delete(key);job=null;}
+      if(job?.done&&request.retry&&!['FETCHING','REUPLOADING','DOWNLOADING','RESOLVING'].includes(model.mediaData?.mediaStage)){jobs.delete(key);job=null;}
       if(!job&&request.start&&typeof model.forceDownloadMediaEvenIfExpensive==='function'){if(jobs.size>=500)for(const[k,v]of jobs)if(v.done||Date.now()-v.at>60000)jobs.delete(k);job={at:Date.now(),done:false};jobs.set(key,job);Promise.resolve().then(()=>model.forceDownloadMediaEvenIfExpensive()).catch(()=>{}).finally(()=>job.done=true);}
       return{available:false,pending:!!job&&Date.now()-job.at<180000&&(!job.done||['FETCHING','REUPLOADING','DOWNLOADING','RESOLVING'].includes(model.mediaData?.mediaStage))};
     }catch{return unavailable;}
