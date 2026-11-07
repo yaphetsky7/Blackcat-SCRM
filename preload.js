@@ -75,6 +75,7 @@ contextBridge.exposeInMainWorld('api', {
   clipOpen: (request) => ipcRenderer.invoke('clips:open', request),
   openUserGuide:()=>ipcRenderer.invoke('help:guide'),
   messageNotify: request=>ipcRenderer.invoke('messages:notify',request),
+  messageSoundLog: request=>ipcRenderer.invoke('messages:sound-log',request),
   onMessageNotificationOpen: fn=>{const listener=(_e,id,chat)=>fn(id,chat);ipcRenderer.on('messages:open-account',listener);return()=>ipcRenderer.removeListener('messages:open-account',listener);},
   localWorkspace: (action,request) => ipcRenderer.invoke('workspace:'+action,request),
   onLocalWorkspaceChanged: fn => { const listener=()=>fn();ipcRenderer.on('workspace:changed',listener);return()=>ipcRenderer.removeListener('workspace:changed',listener); },
