@@ -578,6 +578,20 @@
     </form>
   </div>
 
+  <dialog id="backup-enable-dialog" aria-labelledby="backup-enable-title">
+    <form method="dialog" class="modal-card">
+      <h2 id="backup-enable-title">开启聊天备份</h2>
+      <p>开启后，只要黑猫SCRM开着，你停止操作达到下面设定的时间（或切到其他程序），就会自动开始备份。</p>
+      <label for="backup-enable-idle">停止操作多久后开始备份</label>
+      <select id="backup-enable-idle"><option value="1">1 分钟</option><option value="2">2 分钟</option><option value="5">5 分钟</option><option value="10">10 分钟</option><option value="15">15 分钟</option><option value="30">30 分钟</option></select>
+      <p class="backup-enable-warning"><b>备份时页面会自己跳来跳去。</b>软件要逐个打开账号和对话才能读取内容，这是正常现象。有未读消息的对话会先跳过，不会变成已读。需要用电脑时，可以点设置里的“停止扫描”。</p>
+      <footer>
+        <button type="button" id="backup-enable-cancel">取消</button>
+        <button type="submit" id="backup-enable-ok" class="primary">开启备份</button>
+      </footer>
+    </form>
+  </dialog>
+
   <dialog id="platform-picker" aria-labelledby="platform-picker-title" aria-describedby="platform-picker-description">
     <header class="platform-picker-head"><div><p class="picker-eyebrow">连接新账号</p><h2 id="platform-picker-title">新建会话</h2></div><button type="button" id="platform-picker-close" class="icon-btn" aria-label="关闭" title="关闭">×</button></header>
     <p id="platform-picker-description">选择你要登录的平台</p>

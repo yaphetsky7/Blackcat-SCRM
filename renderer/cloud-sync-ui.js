@@ -43,12 +43,20 @@
   el('upload').onclick = () => run(() => call('business-sync')); el('refresh').onclick = () => run(refresh);
   el('view').onclick = () => run(async () => { const r = await window.api.cloudArchive('open'); if (!r.ok) throw Error(r.error); return window.backupViewer.open(false, r); });
   // Read a switch before run() redraws it from the last saved state (which would put the old tick back and save that)
-  const toggle = (id, key, action, payload) => { el(id).onchange = () => {
-    const on = el(id).checked; if (state) state[key] = on;
+  const toggle = (id, key, action, payload, before) => { el(id).onchange = async () => {
+    const on = el(id).checked;
+    if (before && !(await before(on))) { el(id).checked = !on; return; }
+    if (state) state[key] = on;
     run(async () => { try { await call(action, payload(on)); } catch (e) { await refresh().catch(() => {}); throw e; } });
   }; };
   el('sync').onclick = () => run(() => call('sync'));
-  toggle('capture', 'captureEnabled', 'archive-configure', (on) => ({ enabled: on }));
+  // Turning chat saving on shows the same box as local backup: idle time and the page jumping between chats
+  toggle('capture', 'captureEnabled', 'archive-configure', (on) => ({ enabled: on }), async (on) => {
+    if (!on || !window.confirmBackupEnable) return true;
+    const idle = await window.confirmBackupEnable(); if (idle === null) return false;
+    const r = await window.api.backupConfigure(true, true, idle); if (!r?.ok) { el('status').textContent = r?.error || ''; return false; }
+    return true;
+  });
   el('scan').onclick = () => run(async () => { await window.backupController.run(true); const error = window.backupController.getState().error; if (error) throw Error(error); });
   el('scan-stop').onclick = () => document.getElementById('backup-stop').click();
   toggle('automatic', 'automatic', 'configure', (on) => ({ automatic: on }));
