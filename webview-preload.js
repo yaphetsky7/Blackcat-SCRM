@@ -1237,6 +1237,11 @@ function installInboxBridge(deps) {
     }
     return { unread: unread || (box.querySelector('.icon-mention') ? 1 : 0), muted };
   }
+  // WhatsApp marks a muted chat in the list with a crossed-out bell
+  function whatsappMuted(row) {
+    if (row.querySelector('[data-icon*="notifications-off"], [data-icon="muted"]')) return true;
+    return [...row.querySelectorAll('svg title')].some((t) => /notifications-off|^muted$/i.test(t.textContent || ''));
+  }
   function conversationRows(allRows = false) {
     const p = platform();
     if (!p) return [];
@@ -1270,7 +1275,9 @@ function installInboxBridge(deps) {
       const unread = tg ? (tg.muted ? 0 : tg.unread) : badge ? Math.min(9999, Number((unreadText?.match(/\d+/) || [])[0]) || 1) : 0;
       const ref = { key: String(key).slice(0, 400), title, href: href.slice(0, 1000), dataId: dataId.slice(0, 400), privateChat: privateType(row, String(key)) };
       rowNodes.set(ref.key, row);
-      result.push({ ...ref, preview, messageStamp, unread, updatedAt: Date.now() });
+      const entry = { ...ref, preview, messageStamp, unread, updatedAt: Date.now() };
+      if (p === 'whatsapp') entry.muted = whatsappMuted(row);
+      result.push(entry);
       if (!allRows && result.length >= 200) break;
     }
     return result;
